@@ -7,12 +7,22 @@
 """Provides a chromosome for a single test case."""
 from __future__ import annotations
 
+import re
+
+from abc import ABC
+from abc import abstractmethod
 from typing import TYPE_CHECKING
+from typing import TypeGuard
 
 import pynguin.configuration as config
 import pynguin.ga.chromosome as chrom
 import pynguin.testcase.statement as stmt
 
+from pynguin.analyses.typesystem import AnyType
+from pynguin.analyses.typesystem import Instance
+from pynguin.analyses.typesystem import ProperType
+from pynguin.analyses.typesystem import TupleType
+from pynguin.analyses.typesystem import TypeInfo
 from pynguin.utils import randomness
 
 
@@ -22,6 +32,261 @@ if TYPE_CHECKING:
     import pynguin.testcase.testfactory as tf
 
     from pynguin.testcase.execution import ExecutionResult
+    from pynguin.testcase.variablereference import VariableReference
+
+
+class TypeErrorCause(ABC):
+    """A cause of a type error."""
+
+    @abstractmethod
+    def match(
+        self, test_case: tc.TestCase, exception: TypeError
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Matches the cause of a type error.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+
+
+class RegexTypeErrorCause(TypeErrorCause):
+    """A cause of a type error that is matched by a regular expression."""
+
+    regex: re.Pattern
+
+    def match(
+        self, test_case: tc.TestCase, exception: TypeError
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Matches the cause of a type error.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        match = self.regex.match(str(exception))
+
+        if match is None:
+            return None
+
+        return self.process_groups(test_case, exception, match.groups())
+
+    @abstractmethod
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+
+
+class ValidateParamsTypeErrorCause(RegexTypeErrorCause):
+    """A cause of a scipy type error that is matched by a regular expression."""
+
+    regex = re.compile(
+        r"The '(.+)' parameter of .+ must be an (?:instance of '(.+)'|(array-like))(?:, an (?:instance of '(.+)'|(array-like)))*(?: or an (?:instance of '(.+)'|(array-like)))?. Got .+ instead."  # noqa: E501
+    )
+
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        param, *types = groups
+
+        def not_none(x: TypeInfo | None) -> TypeGuard[TypeInfo]:
+            return x is not None
+
+        type_infos = list(
+            filter(
+                not_none,
+                [
+                    test_case.test_cluster.type_system.find_type_info(full_name)
+                    for full_name in types
+                    if full_name is not None and full_name != "array-like"
+                ],
+            )
+        )
+
+        if "array-like" in types:
+            type_infos.extend(
+                test_case.test_cluster.type_system.find_by_attribute("__getitem__")
+            )
+
+        return param, type_infos
+
+
+class LenTypeErrorCause(RegexTypeErrorCause):
+    """A cause of a len type error that is matched by a regular expression."""
+
+    regex = re.compile(r"object of type '.+' has no len\(\)")
+
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        return "__obj", list(
+            test_case.test_cluster.type_system.find_by_attribute("__len__")
+        )
+
+
+class ConcatenateTypeErrorCause(RegexTypeErrorCause):
+    """A cause of a concatenate type error that is matched by a regular expression."""
+
+    regex = re.compile(r"can only concatenate str (not \".*\") to str")
+
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        return None, [TypeInfo(str)]
+
+
+class CallableTypeErrorCause(RegexTypeErrorCause):
+    """A cause of a callable type error that is matched by a regular expression."""
+
+    regex = re.compile(r"'.*' object is not callable")
+
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        return None, list(
+            test_case.test_cluster.type_system.find_by_attribute("__call__")
+        )
+
+
+class SubscriptableTypeErrorCause(RegexTypeErrorCause):
+    """A cause of a subscriptable type error that is matched by a regular expression."""
+
+    regex = re.compile(r"'.*' object is not subscriptable")
+
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        return None, list(
+            test_case.test_cluster.type_system.find_by_attribute("__getitem__")
+        )
+
+
+class BasicTypeErrorCause(RegexTypeErrorCause):
+    """A cause of a basic type error that is matched by a regular expression."""
+
+    regex = re.compile(r".*must be (.*), not (?:.*)")
+
+    def process_groups(
+        self,
+        test_case: tc.TestCase,
+        exception: TypeError,
+        groups: tuple[str | None, ...],
+    ) -> tuple[str | None, list[TypeInfo]] | None:
+        """Processes the groups of the regular expression match.
+
+        Args:
+            test_case: The test case that caused the exception.
+            exception: The exception that was thrown.
+            groups: The groups of the regular expression match.
+
+        Returns:
+            A tuple of the parameter name and the types that were expected.
+        """
+        type_name = groups[0]
+
+        if type_name is None:
+            return None
+
+        type_ = test_case.test_cluster.type_system.find_type_info(type_name)
+
+        if type_ is None:
+            return None, []
+
+        return None, [type_]
+
+
+TYPE_ERROR_CAUSES: list[TypeErrorCause] = [
+    ValidateParamsTypeErrorCause(),
+    LenTypeErrorCause(),
+    ConcatenateTypeErrorCause(),
+    CallableTypeErrorCause(),
+    SubscriptableTypeErrorCause(),
+    BasicTypeErrorCause(),
+]
 
 
 class TestCaseChromosome(chrom.Chromosome):
@@ -119,6 +384,9 @@ class TestCaseChromosome(chrom.Chromosome):
 
         # In case mutation removes all calls on the SUT.
         backup = self.test_case.clone()
+
+        if self._mutation_type_errors():
+            changed = True
 
         if (
             randomness.next_float()
@@ -230,6 +498,98 @@ class TestCaseChromosome(chrom.Chromosome):
             if 0 <= position < self.size():
                 changed = True
         return changed
+
+    def _mutation_type_errors(self) -> bool:
+        result = self.get_last_execution_result()
+
+        if result is None:
+            return False
+
+        if self._test_factory is None:
+            return False
+
+        changed = False
+        for exception_position, exception in result.exceptions.items():
+            if self._mutation_type_error(exception_position, exception):
+                changed = True
+
+        return changed
+
+    def _mutation_type_error(
+        self, exception_position: int, exception: BaseException
+    ) -> bool:
+        if not isinstance(exception, TypeError) or exception_position >= len(
+            self.test_case.statements
+        ):
+            return False
+
+        exception_statement = self._test_case.get_statement(exception_position)
+
+        if (
+            not isinstance(exception_statement, stmt.ParametrizedStatement)
+            or not exception_statement.args
+        ):
+            return False
+
+        param, types = self._get_param_and_types(exception)
+
+        ref = self._get_ref(exception_statement, param)
+
+        if not types:
+            types = self._test_case.test_cluster.type_system.get_all_types()
+
+        type_info = randomness.choice(types)
+
+        if type_info is None:
+            return False
+
+        new_type = self._get_proper_type(type_info)
+
+        position = ref.get_statement_position()
+
+        if position >= len(self.test_case.statements):
+            return False
+
+        statement = self._test_case.get_statement(position)
+
+        if not isinstance(statement, stmt.VariableCreatingStatement):
+            return False
+
+        assert self._test_factory, "Mutation requires a test factory."
+
+        return self._test_factory.change_random_call_type(
+            self._test_case, statement, new_type
+        )
+
+    def _get_ref(
+        self, exception_statement: stmt.ParametrizedStatement, param: str | None
+    ) -> VariableReference:
+        ref: VariableReference | None = None
+
+        if param is not None:
+            ref = exception_statement.args.get(param)
+
+        if ref is None:
+            ref = randomness.choice(list(exception_statement.args.values()))
+
+        return ref
+
+    def _get_param_and_types(
+        self, exception: TypeError
+    ) -> tuple[str | None, list[TypeInfo]]:
+        for type_error_cause in TYPE_ERROR_CAUSES:
+            match = type_error_cause.match(self._test_case, exception)
+
+            if match is not None:
+                return match
+
+        return None, []
+
+    def _get_proper_type(self, type_info: TypeInfo) -> ProperType:
+        if type_info.raw_type is tuple:
+            return TupleType((AnyType(),), unknown_size=True)
+
+        return Instance(type_info)
 
     def get_last_mutatable_statement(self) -> int | None:
         """Provides the index of the last mutatable statement of the wrapped test case.

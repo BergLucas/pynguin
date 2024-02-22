@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 # TODO(fk) find better name for this?
 # TODO split this monster!
-class TestFactory:
+class TestFactory:  # noqa: PLR0904
     """A factory for test-case generation.
 
     This factory does not generate test cases but provides all necessary means to
@@ -754,23 +754,27 @@ class TestFactory:
                 references.update(temp)
         return positions
 
-    def change_random_call(
-        self, test_case: tc.TestCase, statement: stmt.VariableCreatingStatement
+    def change_random_call_type(
+        self,
+        test_case: tc.TestCase,
+        statement: stmt.VariableCreatingStatement,
+        new_type: ProperType,
     ) -> bool:
-        """Change the call represented by this statement to another one.
+        """Change the call represented by this statement to another one with a new type.
 
         Args:
             test_case: The test case
             statement: The new statement
+            new_type: The new type
 
         Returns:
             Whether the operation was successful
         """
         objects = test_case.get_all_objects(statement.get_position())
-        type_ = statement.ret_val.type
+
         # We need a consistent signature, otherwise nothing will match up
         signature_memo: dict[InferredSignature, dict[str, ProperType]] = {}
-        calls = self._get_possible_calls(type_, objects, signature_memo)
+        calls = self._get_possible_calls(new_type, objects, signature_memo)
         acc_object = statement.accessible_object()
         if acc_object in calls:
             calls.remove(acc_object)
@@ -785,6 +789,22 @@ class TestFactory:
         except ConstructionFailedException:
             self._logger.debug("Failed to change call for statement.", exc_info=True)
         return False
+
+    def change_random_call(
+        self, test_case: tc.TestCase, statement: stmt.VariableCreatingStatement
+    ) -> bool:
+        """Change the call represented by this statement to another one.
+
+        Args:
+            test_case: The test case
+            statement: The new statement
+
+        Returns:
+            Whether the operation was successful
+        """
+        return self.change_random_call_type(
+            test_case, statement, statement.ret_val.type
+        )
 
     def change_call(
         self,

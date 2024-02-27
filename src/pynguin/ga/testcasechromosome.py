@@ -18,6 +18,8 @@ import pynguin.configuration as config
 import pynguin.ga.chromosome as chrom
 import pynguin.testcase.statement as stmt
 
+from pynguin.analyses.typesystem import InferredSignature
+from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TypeInfo
 from pynguin.utils import randomness
 
@@ -596,6 +598,9 @@ class TestCaseChromosome(chrom.Chromosome):
 
         assert self._test_factory, "Mutation requires a test factory."
 
+        if position == exception_position and isinstance(statement, stmt.MethodStatement):
+            signature_memo: dict[InferredSignature, dict[str, ProperType]] = {}
+            return self._test_factory.change_call(self._test_case, statement, statement.accessible_object(), signature_memo)
         return self._test_factory.change_random_call_type(
             self._test_case, statement, new_type
         )

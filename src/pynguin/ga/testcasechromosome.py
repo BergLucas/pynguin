@@ -190,7 +190,7 @@ class ConcatenateTypeErrorCause(RegexTypeErrorCause):
         Returns:
             A tuple of the parameter name and the types that were expected.
         """
-        return None, [TypeInfo(str)]
+        return None, [test_case.test_cluster.type_system.to_type_info(str)]
 
 
 class CallableTypeErrorCause(RegexTypeErrorCause):
@@ -543,7 +543,7 @@ class TestCaseChromosome(chrom.Chromosome):
         if type_info is None:
             return False
 
-        new_type = self._get_proper_type(type_info)
+        new_type = self._test_case.test_cluster.type_system.make_instance(type_info)
 
         position = ref.get_statement_position()
 
@@ -584,12 +584,6 @@ class TestCaseChromosome(chrom.Chromosome):
                 return match
 
         return None, []
-
-    def _get_proper_type(self, type_info: TypeInfo) -> ProperType:
-        if type_info.raw_type is tuple:
-            return TupleType((AnyType(),), unknown_size=True)
-
-        return Instance(type_info)
 
     def get_last_mutatable_statement(self) -> int | None:
         """Provides the index of the last mutatable statement of the wrapped test case.

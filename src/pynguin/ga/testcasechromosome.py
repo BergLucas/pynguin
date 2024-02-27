@@ -18,10 +18,6 @@ import pynguin.configuration as config
 import pynguin.ga.chromosome as chrom
 import pynguin.testcase.statement as stmt
 
-from pynguin.analyses.typesystem import AnyType
-from pynguin.analyses.typesystem import Instance
-from pynguin.analyses.typesystem import ProperType
-from pynguin.analyses.typesystem import TupleType
 from pynguin.analyses.typesystem import TypeInfo
 from pynguin.utils import randomness
 
@@ -35,21 +31,40 @@ if TYPE_CHECKING:
     from pynguin.testcase.variablereference import VariableReference
 
 
+def get_variable_reference_from_position(
+    statement: stmt.ParametrizedStatement, position: int
+) -> VariableReference:
+    """Get the variable reference from a parameter position.
+
+    Args:
+        statement: The statement to get the variable reference from.
+        position: The position of the variable reference.
+
+    Returns:
+        The variable reference at the given position.
+    """
+    return tuple(statement.args.values())[position]
+
+
 class TypeErrorCause(ABC):
     """A cause of a type error."""
 
     @abstractmethod
     def match(
-        self, test_case: tc.TestCase, exception: TypeError
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+        self,
+        test_case: tc.TestCase,
+        exception_statement: stmt.ParametrizedStatement,
+        exception: TypeError,
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Matches the cause of a type error.
 
         Args:
             test_case: The test case that caused the exception.
+            exception_statement: The statement that caused the exception.
             exception: The exception that was thrown.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
 
 
@@ -59,40 +74,44 @@ class RegexTypeErrorCause(TypeErrorCause):
     regex: re.Pattern
 
     def match(
-        self, test_case: tc.TestCase, exception: TypeError
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+        self,
+        test_case: tc.TestCase,
+        exception_statement: stmt.ParametrizedStatement,
+        exception: TypeError,
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Matches the cause of a type error.
 
         Args:
             test_case: The test case that caused the exception.
+            exception_statement: The statement that caused the exception.
             exception: The exception that was thrown.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
         match = self.regex.match(str(exception))
 
         if match is None:
             return None
 
-        return self.process_groups(test_case, exception, match.groups())
+        return self.process_groups(test_case, exception_statement, match.groups())
 
     @abstractmethod
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
 
 
@@ -106,18 +125,18 @@ class ValidateParamsTypeErrorCause(RegexTypeErrorCause):
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
         param, *types = groups
 
@@ -140,7 +159,15 @@ class ValidateParamsTypeErrorCause(RegexTypeErrorCause):
                 test_case.test_cluster.type_system.find_by_attribute("__getitem__")
             )
 
-        return param, type_infos
+        if param is None:
+            return None
+
+        param_variable = exception_statement.args.get(param)
+
+        if param_variable is None:
+            return None
+
+        return param_variable, type_infos
 
 
 class LenTypeErrorCause(RegexTypeErrorCause):
@@ -151,20 +178,20 @@ class LenTypeErrorCause(RegexTypeErrorCause):
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
-        return "__obj", list(
+        return get_variable_reference_from_position(exception_statement, 0), list(
             test_case.test_cluster.type_system.find_by_attribute("__len__")
         )
 
@@ -177,20 +204,22 @@ class ConcatenateTypeErrorCause(RegexTypeErrorCause):
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
-        return None, [test_case.test_cluster.type_system.to_type_info(str)]
+        return get_variable_reference_from_position(exception_statement, 0), [
+            test_case.test_cluster.type_system.to_type_info(str)
+        ]
 
 
 class CallableTypeErrorCause(RegexTypeErrorCause):
@@ -201,20 +230,23 @@ class CallableTypeErrorCause(RegexTypeErrorCause):
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
             A tuple of the parameter name and the types that were expected.
         """
-        return None, list(
+        if not isinstance(exception_statement, stmt.MethodStatement):
+            return None
+
+        return exception_statement.callee, list(
             test_case.test_cluster.type_system.find_by_attribute("__call__")
         )
 
@@ -227,20 +259,23 @@ class SubscriptableTypeErrorCause(RegexTypeErrorCause):
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
-        return None, list(
+        if not isinstance(exception_statement, stmt.MethodStatement):
+            return None
+
+        return exception_statement.callee, list(
             test_case.test_cluster.type_system.find_by_attribute("__getitem__")
         )
 
@@ -253,30 +288,31 @@ class BasicTypeErrorCause(RegexTypeErrorCause):
     def process_groups(
         self,
         test_case: tc.TestCase,
-        exception: TypeError,
+        exception_statement: stmt.ParametrizedStatement,
         groups: tuple[str | None, ...],
-    ) -> tuple[str | None, list[TypeInfo]] | None:
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         """Processes the groups of the regular expression match.
 
         Args:
             test_case: The test case that caused the exception.
-            exception: The exception that was thrown.
+            exception_statement: The statement that caused the exception.
             groups: The groups of the regular expression match.
 
         Returns:
-            A tuple of the parameter name and the types that were expected.
+            A tuple of the parameter variable and the types that were expected.
         """
         type_name = groups[0]
 
         if type_name is None:
             return None
 
+        arg = get_variable_reference_from_position(exception_statement, 0)
         type_ = test_case.test_cluster.type_system.find_type_info(type_name)
 
         if type_ is None:
-            return None, []
+            return arg, []
 
-        return None, [type_]
+        return arg, [type_]
 
 
 TYPE_ERROR_CAUSES: list[TypeErrorCause] = [
@@ -531,9 +567,12 @@ class TestCaseChromosome(chrom.Chromosome):
         ):
             return False
 
-        param, types = self._get_param_and_types(exception)
+        param_and_type = self._get_param_and_types(exception, exception_statement)
 
-        ref = self._get_ref(exception_statement, param)
+        if param_and_type is None:
+            return False
+
+        param, types = param_and_type
 
         if not types:
             types = self._test_case.test_cluster.type_system.get_all_types()
@@ -545,7 +584,7 @@ class TestCaseChromosome(chrom.Chromosome):
 
         new_type = self._test_case.test_cluster.type_system.make_instance(type_info)
 
-        position = ref.get_statement_position()
+        position = param.get_statement_position()
 
         if position >= len(self.test_case.statements):
             return False
@@ -561,29 +600,18 @@ class TestCaseChromosome(chrom.Chromosome):
             self._test_case, statement, new_type
         )
 
-    def _get_ref(
-        self, exception_statement: stmt.ParametrizedStatement, param: str | None
-    ) -> VariableReference:
-        ref: VariableReference | None = None
-
-        if param is not None:
-            ref = exception_statement.args.get(param)
-
-        if ref is None:
-            ref = randomness.choice(list(exception_statement.args.values()))
-
-        return ref
-
     def _get_param_and_types(
-        self, exception: TypeError
-    ) -> tuple[str | None, list[TypeInfo]]:
+        self, exception: TypeError, exception_statement: stmt.ParametrizedStatement
+    ) -> tuple[VariableReference, list[TypeInfo]] | None:
         for type_error_cause in TYPE_ERROR_CAUSES:
-            match = type_error_cause.match(self._test_case, exception)
+            match = type_error_cause.match(
+                self._test_case, exception_statement, exception
+            )
 
             if match is not None:
                 return match
 
-        return None, []
+        return None
 
     def get_last_mutatable_statement(self) -> int | None:
         """Provides the index of the last mutatable statement of the wrapped test case.

@@ -554,9 +554,9 @@ class ReturnTypeObserver(ExecutionObserver):
                     type(first_item[1]),
                 )
             elif type(value) is tuple:
-                self._return_type_local_state.return_type_generic_args[
-                    position
-                ] = tuple(type(v) for v in value)
+                self._return_type_local_state.return_type_generic_args[position] = (
+                    tuple(type(v) for v in value)
+                )
 
 
 @dataclass
@@ -1996,6 +1996,31 @@ class ModuleProvider:
     def __init__(self):  # noqa: D107
         self._mutated_module_aliases: dict[str, ModuleType] = {}
 
+    @staticmethod
+    def __get_sys_module(module_name: str) -> ModuleType:
+        try:
+            return sys.modules[module_name]
+        except KeyError as error:
+            try:
+                package_name, submodule_name = module_name.rsplit(".", 1)
+            except ValueError as e:
+                raise error from e
+
+            try:
+                package = ModuleProvider.__get_sys_module(package_name)
+            except KeyError as e:
+                raise error from e
+
+            try:
+                submodule = getattr(package, submodule_name)
+            except AttributeError as e:
+                raise error from e
+
+            if not inspect.ismodule(submodule):
+                raise error
+
+            return submodule
+
     def get_module(self, module_name: str) -> ModuleType:
         """Provides a module.
 
@@ -2012,7 +2037,7 @@ class ModuleProvider:
             mutated_module := self._mutated_module_aliases.get(module_name, None)
         ) is not None:
             return mutated_module
-        return sys.modules[module_name]
+        return self.__get_sys_module(module_name)
 
     def add_mutated_version(self, module_name: str, mutated_module: ModuleType) -> None:
         """Adds a mutated version of a module to the collection of mutated modules.
@@ -2034,7 +2059,7 @@ class ModuleProvider:
         Args:
             module_name: the module to reload.
         """
-        reload(sys.modules[module_name])
+        reload(ModuleProvider.__get_sys_module(module_name))
 
 
 class AbstractTestCaseExecutor(abc.ABC):
@@ -2195,8 +2220,9 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
         self,
         test_case: tc.TestCase,
     ) -> ExecutionResult:
-        with contextlib.redirect_stdout(self._null_file), contextlib.redirect_stderr(
-            self._null_file
+        with (
+            contextlib.redirect_stdout(self._null_file),
+            contextlib.redirect_stderr(self._null_file),
         ):
             return_queue: Queue[ExecutionResult] = Queue()
             thread = threading.Thread(

@@ -81,6 +81,16 @@ def test_parse_native_module():
     module.LOGGER.debug.assert_called_once()
 
 
+def test_parse_alias_module():
+    module.LOGGER = MagicMock(Logger)
+    module_name = "tests.fixtures.cluster.dependency"
+    alias_name = "tests.fixtures.cluster.alias_module.dep"
+    parse_result = parse_module(alias_name)
+    assert parse_result.module.__name__ == module_name
+    assert parse_result.module_name == alias_name
+    assert parse_result.syntax_tree is not None
+
+
 def test_analyse_module(parsed_module_no_dependencies):
     test_cluster = analyse_module(parsed_module_no_dependencies)
     assert test_cluster.num_accessible_objects_under_test() == 4
@@ -266,9 +276,11 @@ def __extract_method_names(
     accessible_objects: OrderedSet[GenericAccessibleObject],
 ) -> set[str]:
     return {
-        f"{elem.owner.name}.{elem.callable.__name__}"
-        if isinstance(elem, GenericMethod)
-        else f"{elem.owner.name}.__init__"
+        (
+            f"{elem.owner.name}.{elem.callable.__name__}"
+            if isinstance(elem, GenericMethod)
+            else f"{elem.owner.name}.__init__"
+        )
         for elem in accessible_objects
     }
 

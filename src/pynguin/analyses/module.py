@@ -21,6 +21,7 @@ import queue
 import typing
 
 from collections import defaultdict
+from pathlib import Path
 from types import BuiltinFunctionType
 from types import FunctionType
 from types import GenericAlias
@@ -227,6 +228,42 @@ class _ModuleParseResult:
     type4py_data: Type4pyData | None
 
 
+def import_module(module_name: str) -> ModuleType:
+    """Imports a module by name.
+
+    Unlike the built-in :py:func:`importlib.import_module`, this function also supports
+    importing module aliases.
+
+    Args:
+        module_name: The fully-qualified name of the module
+
+    Returns:
+        The imported module
+    """
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as error:
+        try:
+            package_name, submodule_name = module_name.rsplit(".", 1)
+        except ValueError as e:
+            raise error from e
+
+        try:
+            package = import_module(package_name)
+        except ModuleNotFoundError as e:
+            raise error from e
+
+        try:
+            submodule = getattr(package, submodule_name)
+        except AttributeError as e:
+            raise error from e
+
+        if not inspect.ismodule(submodule):
+            raise error
+
+        return submodule
+
+
 def parse_module(
     module_name: str, *, query_type4py: bool = False
 ) -> _ModuleParseResult:
@@ -244,7 +281,7 @@ def parse_module(
     Returns:
         A tuple of the imported module type and its optional AST
     """
-    module = importlib.import_module(module_name)
+    module = import_module(module_name)
     type4py_data: Type4pyData | None = None
     syntax_tree: astroid.Module | None = None
     linenos: int = -1
@@ -523,17 +560,17 @@ class ModuleTestCluster(TestCluster):  # noqa: PLR0904
     def __init__(self, linenos: int) -> None:  # noqa: D107
         self.__type_system = TypeSystem()
         self.__linenos = linenos
-        self.__generators: dict[
-            ProperType, OrderedSet[GenericAccessibleObject]
-        ] = defaultdict(OrderedSet)
+        self.__generators: dict[ProperType, OrderedSet[GenericAccessibleObject]] = (
+            defaultdict(OrderedSet)
+        )
 
         # Modifier belong to a certain class, not type.
-        self.__modifiers: dict[
-            TypeInfo, OrderedSet[GenericAccessibleObject]
-        ] = defaultdict(OrderedSet)
-        self.__accessible_objects_under_test: OrderedSet[
-            GenericAccessibleObject
-        ] = OrderedSet()
+        self.__modifiers: dict[TypeInfo, OrderedSet[GenericAccessibleObject]] = (
+            defaultdict(OrderedSet)
+        )
+        self.__accessible_objects_under_test: OrderedSet[GenericAccessibleObject] = (
+            OrderedSet()
+        )
         self.__function_data_for_accessibles: dict[
             GenericAccessibleObject, _CallableData
         ] = {}
@@ -1351,11 +1388,28 @@ def __analyse_included_classes(
 
         type_info = test_cluster.type_system.to_type_info(current)
 
+        # Skip if the class is _ObjectProxyMethods, as it is broken
+        # since __module__ is not well defined on it.
+        if isinstance(current.__module__, property):
+            LOGGER.info("Skipping class that has a property __module__: %s", current)
+            continue
+
+        # Skip some C-extension modules that are not publicly accessible.
+        try:
+            results = parse_results[current.__module__]
+        except ModuleNotFoundError as error:
+            if getattr(current, "__file__", None) is None or Path(
+                current.__file__
+            ).suffix in {".so", ".pyd"}:
+                LOGGER.info("C-extension module not found: %s", current.__module__)
+                continue
+            raise error
+
         __analyse_class(
             type_info=type_info,
             type_inference_strategy=type_inference_strategy,
-            module_tree=parse_results[current.__module__].syntax_tree,
-            type4py_data=parse_results[current.__module__].type4py_data,
+            module_tree=results.syntax_tree,
+            type4py_data=results.type4py_data,
             test_cluster=test_cluster,
             add_to_test=current.__module__ == root_module_name,
         )

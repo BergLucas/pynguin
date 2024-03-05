@@ -1,36 +1,44 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
+from abc import abstractmethod
 
+
+@dataclass
+class GrammarExpansion:
+    rules: list[GrammarRule]
 
 @dataclass
 class Grammar:
     initial_rule: str
-    rules: dict[str, GrammarRule]
+    expansions: dict[str, GrammarExpansion]
 
-T = TypeVar("T")
+T = TypeVar("T", covariant=True)
 
-class GrammarVisitor(Protocol[T]):
-    def visit_terminal(self, terminal: Terminal) -> T:
-        """Visit a terminal node.
-        
-        Args:
-            terminal (Terminal): The terminal node to visit.
-        
-        Returns:
-            T: The result of visiting the terminal node.
-        """
-
-    def visit_non_terminal(self, non_terminal: NonTerminal) -> T:
-        """Visit a non-terminal node.
+class GrammarRuleVisitor(Protocol[T]):
+    @abstractmethod
+    def visit_constant(self, constant: Constant) -> T:
+        """Visit a constant node.
 
         Args:
-            non_terminal (NonTerminal): The non-terminal node to visit.
+            constant (Constant): The constant node to visit.
 
         Returns:
-            T: The result of visiting the non-terminal node.
+            T: The result of visiting the constant node.
         """
 
+    @abstractmethod
+    def visit_sequence(self, sequence: Sequence) -> T:
+        """Visit a sequence node.
+
+        Args:
+            sequence (Sequence): The sequence node to visit.
+
+        Returns:
+            T: The result of visiting the sequence node.
+        """
+
+    @abstractmethod
     def visit_rule_reference(self, rule_reference: RuleReference) -> T:
         """Visit a rule reference node.
         
@@ -41,6 +49,7 @@ class GrammarVisitor(Protocol[T]):
             T: The result of visiting the rule reference node.
         """
 
+    @abstractmethod
     def visit_any_char(self, any_char: AnyChar) -> T:
         """Visit an any char node.
         
@@ -51,6 +60,7 @@ class GrammarVisitor(Protocol[T]):
             T: The result of visiting the any char node.
         """
 
+    @abstractmethod
     def visit_choice(self, choice: Choice) -> T:
         """Visit a choice node.
         
@@ -61,6 +71,7 @@ class GrammarVisitor(Protocol[T]):
             T: The result of visiting the choice node.
         """
 
+    @abstractmethod
     def visit_repeat(self, repeat: Repeat) -> T:
         """Visit a repeat node.
 
@@ -72,7 +83,7 @@ class GrammarVisitor(Protocol[T]):
         """
 
 class GrammarRule(Protocol):
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         """Accept a visitor.
 
         Args:
@@ -83,24 +94,24 @@ class GrammarRule(Protocol):
         """
 
 @dataclass
-class Terminal(GrammarRule):
+class Constant(GrammarRule):
     value: str
 
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
-        return visitor.visit_terminal(self)
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
+        return visitor.visit_constant(self)
 
 @dataclass
-class NonTerminal(GrammarRule):
-    children: list[GrammarRule]
+class Sequence(GrammarRule):
+    rules: list[GrammarRule]
 
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
-        return visitor.visit_non_terminal(self)
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
+        return visitor.visit_sequence(self)
 
 @dataclass 
 class RuleReference(GrammarRule):
     name: str
 
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_rule_reference(self)
 
 @dataclass
@@ -108,14 +119,14 @@ class AnyChar(GrammarRule):
     min_code: int = 32
     max_code: int = 128
 
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_any_char(self)
 
 @dataclass
 class Choice(GrammarRule):
     rules: list[GrammarRule]
 
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_choice(self)
 
 @dataclass
@@ -124,5 +135,5 @@ class Repeat(GrammarRule):
     min: int = 0
     max: int | None = None
 
-    def accept(self, visitor: GrammarVisitor[T]) -> T:
+    def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_repeat(self)

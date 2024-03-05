@@ -1,15 +1,15 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from pynguin.grammar.grammar import Grammar, GrammarRule, GrammarVisitor, AnyChar, Choice, NonTerminal, Repeat, RuleReference, Terminal
+from pynguin.grammar.grammar import Grammar, GrammarRule, GrammarRuleVisitor, AnyChar, Choice, Sequence, Repeat, RuleReference, Constant
 from pynguin.utils import randomness
 from typing import Callable
 
 
-class GrammarValueVisitor(GrammarVisitor[str | None]):
-    def visit_terminal(self, terminal: Terminal) -> str:
-        return terminal.value
+class GrammarValueVisitor(GrammarRuleVisitor[str | None]):
+    def visit_constant(self, constant: Constant) -> str:
+        return constant.value
 
-    def visit_non_terminal(self, non_terminal: NonTerminal) -> None:
+    def visit_sequence(self, sequence: Sequence) -> None:
         return None
 
     def visit_rule_reference(self, rule_reference: RuleReference) -> None:
@@ -26,12 +26,12 @@ class GrammarValueVisitor(GrammarVisitor[str | None]):
 
 value_visitor = GrammarValueVisitor()
 
-class GrammarSymbolVisitor(GrammarVisitor[str]):
-    def visit_terminal(self, terminal: Terminal) -> str:
-        return f"{repr(terminal.value)}"
+class GrammarSymbolVisitor(GrammarRuleVisitor[str]):
+    def visit_constant(self, constant: Constant) -> str:
+        return f"{repr(constant.value)}"
 
-    def visit_non_terminal(self, non_terminal: NonTerminal) -> str:
-        return "non_terminal"
+    def visit_sequence(self, sequence: Sequence) -> str:
+        return "sequence"
 
     def visit_rule_reference(self, rule_reference: RuleReference) -> str:
         return f"<{rule_reference.name}>"
@@ -47,40 +47,42 @@ class GrammarSymbolVisitor(GrammarVisitor[str]):
 
 symbol_visitor = GrammarSymbolVisitor()
 
-class GrammarCostVisitor(GrammarVisitor[float]):
+class GrammarCostVisitor(GrammarRuleVisitor[float]):
     def __init__(self, grammar: Grammar) -> None:
         self._grammar = grammar
         self._seen: set[str] = set()
 
-    def visit_terminal(self, terminal: Terminal) -> float:
+    def visit_constant(self, constant: Constant) -> float:
         return 1.0
 
-    def visit_non_terminal(self, non_terminal: NonTerminal) -> float:
+    def visit_sequence(self, sequence: Sequence) -> float:
         return sum(
-            child.accept(self)
-            for child
-            in non_terminal.children
+            rule.accept(self)
+            for rule
+            in sequence.rules
         )
 
-    def visit_rule_reference(self, rule_reference: RuleReference) -> int:
+    def visit_rule_reference(self, rule_reference: RuleReference) -> float:
         if rule_reference.name in self._seen:
             return float("inf")
 
         self._seen.add(rule_reference.name)
 
-        return self._grammar.rules[rule_reference.name].accept(self)
+        return min(
+            rule.accept(self)
+            for rule in self._grammar.expansions[rule_reference.name].rules
+        ) 
 
-    def visit_any_char(self, any_char: AnyChar) -> int:
+    def visit_any_char(self, any_char: AnyChar) -> float:
         return 1.0
 
-    def visit_choice(self, choice: Choice) -> int:
+    def visit_choice(self, choice: Choice) -> float:
         return min(
-            child.accept(self)
-            for child
-            in choice.rules
+            rule.accept(self)
+            for rule in choice.rules
         )
 
-    def visit_repeat(self, repeat: Repeat) -> int:
+    def visit_repeat(self, repeat: Repeat) -> float:
         if repeat.max is None:
             return float("inf")
 
@@ -88,22 +90,22 @@ class GrammarCostVisitor(GrammarVisitor[float]):
 
         return nb_repeats + repeat.rule.accept(self)
 
-class GrammarExpansionsVisitor(GrammarVisitor[list[list[GrammarRule]]]):
+class GrammarExpansionsVisitor(GrammarRuleVisitor[list[list[GrammarRule]]]):
 
     def __init__(self, grammar: Grammar) -> None:
         self._grammar = grammar
 
-    def visit_terminal(self, terminal: Terminal) -> list[list[GrammarRule]]:
+    def visit_constant(self, constant: Constant) -> list[list[GrammarRule]]:
         return [[]]
 
-    def visit_non_terminal(self, non_terminal: NonTerminal) -> list[list[GrammarRule]]:
-        return [non_terminal.children.copy()]
+    def visit_sequence(self, sequence: Sequence) -> list[list[GrammarRule]]:
+        return [sequence.rules.copy()]
 
     def visit_rule_reference(self, rule_reference: RuleReference) -> list[list[GrammarRule]]:
-        return [[self._grammar.rules[rule_reference.name]]]
+        return [[rule] for rule in self._grammar.expansions[rule_reference.name].rules]
 
     def visit_any_char(self, any_char: AnyChar) -> list[list[GrammarRule]]:
-        return [[Terminal(chr(i))] for i in range(any_char.min_code, any_char.max_code)]
+        return [[Constant(chr(i))] for i in range(any_char.min_code, any_char.max_code)]
 
     def visit_choice(self, choice: Choice) -> list[list[GrammarRule]]:
         return [[rule] for rule in choice.rules]

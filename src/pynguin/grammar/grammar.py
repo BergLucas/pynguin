@@ -5,13 +5,9 @@ from abc import abstractmethod
 
 
 @dataclass
-class GrammarExpansion:
-    rules: list[GrammarRule]
-
-@dataclass
 class Grammar:
     initial_rule: str
-    expansions: dict[str, GrammarExpansion]
+    expansions: dict[str, list[GrammarRule]]
 
 T = TypeVar("T", covariant=True)
 
@@ -83,6 +79,7 @@ class GrammarRuleVisitor(Protocol[T]):
         """
 
 class GrammarRule(Protocol):
+    @abstractmethod
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         """Accept a visitor.
 

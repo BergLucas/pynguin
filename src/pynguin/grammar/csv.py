@@ -1,17 +1,17 @@
-from pynguin.grammar.grammar import GrammarExpansion, Grammar, RuleReference, Sequence, Repeat, Constant, AnyChar
+from pynguin.grammar.grammar import Grammar, RuleReference, Sequence, Repeat, Constant, AnyChar
 
 CSV_GRAMMAR = Grammar(
     "csv",
     dict(
-        csv=GrammarExpansion([Repeat(RuleReference("row"))]),
-        row=GrammarExpansion([Sequence([
+        csv=[Repeat(RuleReference("row"))],
+        row=[Sequence([
             RuleReference("field"),
             Repeat(Sequence([Constant(","), RuleReference("field")])),
             Constant("\n"),
-        ])]),
-        field=GrammarExpansion([
+        ])],
+        field=[
             Repeat(AnyChar()),
             Sequence([Constant('"'), Repeat(AnyChar()), Constant('"')]),
-        ])
+        ],
     )
 )

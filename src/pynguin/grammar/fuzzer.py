@@ -5,6 +5,29 @@ from pynguin.utils import randomness
 from typing import Callable
 
 
+class GrammarNonTerminalVisitor(GrammarRuleVisitor[bool]):
+    def visit_constant(self, constant: Constant) -> bool:
+        return False
+
+    def visit_sequence(self, sequence: Sequence) -> bool:
+        return any(rule.accept(self) for rule in sequence.rules)
+
+    def visit_rule_reference(self, rule_reference: RuleReference) -> bool:
+        return True
+
+    def visit_any_char(self, any_char: AnyChar) -> bool:
+        return False
+
+    def visit_choice(self, choice: Choice) -> bool:
+        return any(rule.accept(self) for rule in choice.rules)
+
+    def visit_repeat(self, repeat: Repeat) -> bool:
+        if repeat.max is None:
+            return True
+        return repeat.rule.accept(self)
+
+non_terminal_visitor = GrammarNonTerminalVisitor()
+
 class GrammarValueVisitor(GrammarRuleVisitor[str | None]):
     def visit_constant(self, constant: Constant) -> str:
         return constant.value
@@ -47,48 +70,6 @@ class GrammarSymbolVisitor(GrammarRuleVisitor[str]):
 
 symbol_visitor = GrammarSymbolVisitor()
 
-class GrammarCostVisitor(GrammarRuleVisitor[float]):
-    def __init__(self, grammar: Grammar) -> None:
-        self._grammar = grammar
-        self._seen: set[str] = set()
-
-    def visit_constant(self, constant: Constant) -> float:
-        return 1.0
-
-    def visit_sequence(self, sequence: Sequence) -> float:
-        return sum(
-            rule.accept(self)
-            for rule
-            in sequence.rules
-        )
-
-    def visit_rule_reference(self, rule_reference: RuleReference) -> float:
-        if rule_reference.name in self._seen:
-            return float("inf")
-
-        self._seen.add(rule_reference.name)
-
-        return min(
-            rule.accept(self)
-            for rule in self._grammar.expansions[rule_reference.name]
-        ) 
-
-    def visit_any_char(self, any_char: AnyChar) -> float:
-        return 1.0
-
-    def visit_choice(self, choice: Choice) -> float:
-        return min(
-            rule.accept(self)
-            for rule in choice.rules
-        )
-
-    def visit_repeat(self, repeat: Repeat) -> float:
-        if repeat.max is None:
-            return float("inf")
-
-        nb_repeats = repeat.max - repeat.min
-
-        return nb_repeats + repeat.rule.accept(self)
 
 class GrammarExpansionsVisitor(GrammarRuleVisitor[list[list[GrammarRule]]]):
 
@@ -115,9 +96,10 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[list[GrammarRule]]]):
         if repeat.min == 0:
             expansions.append([])
         expansions.append([repeat.rule])
-        if repeat.max is None or repeat.max > 1:
-            max_repeat = None if repeat.max is None else repeat.max - 1
-            expansions.append([repeat.rule, Repeat(repeat.rule, repeat.min, max_repeat)])
+        if repeat.max is None:
+            expansions.append([repeat.rule, repeat])
+        elif repeat.max > 1:
+            expansions.append([repeat.rule, Repeat(repeat.rule, repeat.min, repeat.max - 1)])
         return expansions
 
 @dataclass
@@ -199,10 +181,36 @@ class GrammarFuzzer:
             for rule in expansion
         ]
 
-    def _expansion_cost(self, expansion: list[GrammarRule]) -> float:
-        return sum(
-            rule.accept(GrammarCostVisitor(self._grammar))
+    def _non_terminal(self, expansion: list[GrammarRule]) -> list[GrammarRule]:
+        return [
+            rule
             for rule in expansion
+            if rule.accept(non_terminal_visitor)
+        ]
+
+    def _rule_cost(self, rule: GrammarRule, seen: set[int]) -> float:
+        return min(
+            self._expansion_cost(expansion, seen)
+            for expansion in rule.accept(self._expansions_visitor)
+        )
+
+    def _expansion_cost(self, expansions: list[GrammarRule], seen: set[int] | None = None) -> float:
+        if seen is None:
+            seen = set()
+
+        rules = self._non_terminal(expansions)
+
+        if not rules:
+            return 1.0
+
+        if any(id(rule) in seen for rule in rules):
+            return float("inf")
+
+        seen.update(id(rule) for rule in rules)
+
+        return sum(
+            self._rule_cost(rule, seen)
+            for rule in rules
         )
 
     def _expand_node_by_cost(self, node: GrammarDerivationTree, cost_function: Callable) -> None:

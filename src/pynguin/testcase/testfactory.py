@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import io
 
 from typing import TYPE_CHECKING
 from typing import cast
 
 import pynguin.configuration as config
 import pynguin.testcase.statement as stmt
+import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin.analyses.constants import ConstantProvider
@@ -27,6 +29,9 @@ from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
+from pynguin.analyses.typesystem import accept_csv_file_like_object
+from pynguin.grammar.csv import CSV_GRAMMAR
+from pynguin.grammar.fuzzer import GrammarFuzzer
 from pynguin.utils import randomness
 from pynguin.utils.exceptions import ConstructionFailedException
 from pynguin.utils.type_utils import is_optional_parameter
@@ -34,7 +39,6 @@ from pynguin.utils.type_utils import is_optional_parameter
 
 if TYPE_CHECKING:
     import pynguin.testcase.testcase as tc
-    import pynguin.testcase.variablereference as vr
 
     from pynguin.analyses.module import ModuleTestCluster
     from pynguin.utils.orderedset import OrderedSet
@@ -1125,6 +1129,12 @@ class TestFactory:
                 position,
                 recursion_depth,
             )
+        if parameter_type.accept(accept_csv_file_like_object) and randomness.next_float() < 0.25:
+            return self._create_csv_file_like_object(
+                test_case,
+                position,
+                recursion_depth,
+            )
         type_generators, only_any = self._test_cluster.get_generators_for(
             parameter_type
         )
@@ -1321,6 +1331,20 @@ class TestFactory:
         ret = test_case.add_variable_creating_statement(
             stmt.DictStatement(test_case, parameter_type, elements), position
         )
+        ret.distance = recursion_depth
+        return ret
+
+    def _create_csv_file_like_object(
+        self,
+        test_case: tc.TestCase,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        type_info = test_case.test_cluster.type_system.alias_to_type_info("io.StringIO")
+        accessible = gao.GenericConstructor(type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO))
+        ref = self.add_primitive(test_case, stmt.GrammarBasedStringPrimitiveStatement(test_case, GrammarFuzzer(CSV_GRAMMAR)), position)
+        statement = stmt.ConstructorStatement(test_case, accessible, dict(initial_value=ref))
+        ret = test_case.add_variable_creating_statement(statement, position+1)
         ret.distance = recursion_depth
         return ret
 

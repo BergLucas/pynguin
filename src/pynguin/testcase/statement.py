@@ -29,6 +29,7 @@ from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TypeInfo
+from pynguin.grammar.fuzzer import GrammarFuzzer, GrammarDerivationTree
 from pynguin.utils import randomness
 from pynguin.utils.mutation_utils import alpha_exponent_insertion
 from pynguin.utils.orderedset import OrderedSet
@@ -1834,6 +1835,31 @@ class StringPrimitiveStatement(PrimitiveStatement[str]):
 
     def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
         visitor.visit_string_primitive_statement(self)
+
+
+class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
+    """Primitive Statement that creates a grammar based String."""
+
+    def __init__(  # noqa: D107
+        self,
+        test_case: tc.TestCase,
+        fuzzer: GrammarFuzzer,
+        derivation_tree: GrammarDerivationTree | None = None,
+    ) -> None:
+        if derivation_tree is None:
+            derivation_tree = fuzzer.create_tree()
+
+        self._derivation_tree = derivation_tree
+        self._fuzzer = fuzzer
+
+        super().__init__(test_case, str(derivation_tree), None)
+
+    def randomize_value(self) -> None:
+        self._fuzzer.mutate_tree(self._derivation_tree)
+        self._value = str(self._derivation_tree)
+
+    def clone(self, test_case: tc.TestCase, memo: dict[vr.VariableReference, vr.VariableReference]) -> StringPrimitiveStatement:
+        return GrammarBasedStringPrimitiveStatement(test_case, self._fuzzer, self._derivation_tree)
 
 
 class BytesPrimitiveStatement(PrimitiveStatement[bytes]):

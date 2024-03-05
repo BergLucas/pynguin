@@ -13,6 +13,8 @@ import logging
 import re
 import types
 import typing
+import importlib
+import io
 
 from abc import ABC
 from abc import abstractmethod
@@ -582,6 +584,29 @@ class _PrimitiveTypeVisitor(TypeVisitor[bool]):
 is_primitive_type = _PrimitiveTypeVisitor()
 
 
+class _CsvFileLikeVisitor(TypeVisitor[bool]):
+    def visit_any_type(self, left: AnyType) -> bool:
+        return True
+
+    def visit_none_type(self, left: NoneType) -> bool:
+        return False
+
+    def visit_instance(self, left: Instance) -> bool:
+        return isinstance(left.type.raw_type, io.TextIOBase)
+
+    def visit_tuple_type(self, left: TupleType) -> bool:
+        return False
+    
+    def visit_union_type(self, left: UnionType) -> bool:
+        return False
+    
+    def visit_unsupported_type(self, left: Unsupported) -> bool:
+        raise NotImplementedError("This type shall not be used during runtime")
+
+
+accept_csv_file_like_object = _CsvFileLikeVisitor()
+
+
 class TypeInfo:
     """A small wrapper around type, i.e., classes.
 
@@ -628,6 +653,24 @@ class TypeInfo:
             The fully qualified name
         """
         return f"{typ.__module__}.{typ.__qualname__}"
+
+    @staticmethod
+    def from_alias_name(alias: str) -> TypeInfo:
+        """Create a TypeInfo from an alias name.
+
+        Args:
+            alias: The alias name
+
+        Returns:
+            The TypeInfo
+        """
+        module_name, alias_name = alias.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        type_info = TypeInfo(getattr(module, alias_name))
+        type_info.module = module_name
+        type_info.full_name = alias
+        type_info.hash = hash(alias)
+        return type_info
 
     def __eq__(self, other) -> bool:
         return isinstance(other, TypeInfo) and other.full_name == self.full_name
@@ -1419,6 +1462,23 @@ class TypeSystem:  # noqa: PLR0904
         if found is not None:
             return found
         info = TypeInfo(typ)
+        self._types[info.full_name] = info
+        self._graph.add_node(info)
+        return info
+
+    def alias_to_type_info(self, alias: str) -> TypeInfo | None:
+        """Find or create type info for the give alias.
+        
+        Args:
+            alias: The name of the alias.
+
+        Returns:
+            A type info object or None if the alias is invalid.
+        """
+        found = self._types.get(alias)
+        if found is not None:
+            return found
+        info = TypeInfo.from_alias_name(alias)
         self._types[info.full_name] = info
         self._graph.add_node(info)
         return info

@@ -3,15 +3,15 @@ from pynguin.grammar.grammar import Grammar, RuleReference, Sequence, Repeat, Co
 CSV_GRAMMAR = Grammar(
     "csv",
     dict(
-        csv=[Repeat(RuleReference("row"))],
-        row=[Sequence([
+        csv=(Repeat(RuleReference("row")),),
+        row=(Sequence((
             RuleReference("field"),
-            Repeat(Sequence([Constant(","), RuleReference("field")])),
+            Repeat(Sequence((Constant(","), RuleReference("field")))),
             Constant("\n"),
-        ])],
-        field=[
+        )),),
+        field=(
             Repeat(AnyChar()),
-            Sequence([Constant('"'), Repeat(AnyChar()), Constant('"')]),
-        ],
+            Sequence((Constant('"'), Repeat(AnyChar()), Constant('"'))),
+        ),
     )
 )

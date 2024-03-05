@@ -71,35 +71,35 @@ class GrammarSymbolVisitor(GrammarRuleVisitor[str]):
 symbol_visitor = GrammarSymbolVisitor()
 
 
-class GrammarExpansionsVisitor(GrammarRuleVisitor[list[list[GrammarRule]]]):
+class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]):
 
     def __init__(self, grammar: Grammar) -> None:
         self._grammar = grammar
 
-    def visit_constant(self, constant: Constant) -> list[list[GrammarRule]]:
-        return [[]]
+    def visit_constant(self, constant: Constant) -> list[tuple[GrammarRule, ...]]:
+        return [tuple()]
 
-    def visit_sequence(self, sequence: Sequence) -> list[list[GrammarRule]]:
-        return [sequence.rules.copy()]
+    def visit_sequence(self, sequence: Sequence) -> list[tuple[GrammarRule, ...]]:
+        return [sequence.rules]
 
-    def visit_rule_reference(self, rule_reference: RuleReference) -> list[list[GrammarRule]]:
-        return [[rule] for rule in self._grammar.expansions[rule_reference.name]]
+    def visit_rule_reference(self, rule_reference: RuleReference) -> list[tuple[GrammarRule, ...]]:
+        return [(rule,) for rule in self._grammar.expansions[rule_reference.name]]
 
-    def visit_any_char(self, any_char: AnyChar) -> list[list[GrammarRule]]:
-        return [[Constant(chr(i))] for i in range(any_char.min_code, any_char.max_code)]
+    def visit_any_char(self, any_char: AnyChar) -> list[tuple[GrammarRule, ...]]:
+        return [(Constant(chr(i)),) for i in range(any_char.min_code, any_char.max_code)]
 
-    def visit_choice(self, choice: Choice) -> list[list[GrammarRule]]:
-        return [[rule] for rule in choice.rules]
+    def visit_choice(self, choice: Choice) -> list[tuple[GrammarRule, ...]]:
+        return [(rule,) for rule in choice.rules]
 
-    def visit_repeat(self, repeat: Repeat) -> list[list[GrammarRule]]: 
-        expansions = []
+    def visit_repeat(self, repeat: Repeat) -> list[tuple[GrammarRule, ...]]: 
+        expansions: list[tuple[GrammarRule, ...]] = []
         if repeat.min == 0:
-            expansions.append([])
-        expansions.append([repeat.rule])
+            expansions.append(tuple())
+        expansions.append((repeat.rule,))
         if repeat.max is None:
-            expansions.append([repeat.rule, repeat])
+            expansions.append((repeat.rule, repeat))
         elif repeat.max > 1:
-            expansions.append([repeat.rule, Repeat(repeat.rule, repeat.min, repeat.max - 1)])
+            expansions.append((repeat.rule, Repeat(repeat.rule, repeat.min, repeat.max - 1)))
         return expansions
 
 @dataclass
@@ -181,20 +181,20 @@ class GrammarFuzzer:
             for rule in expansion
         ]
 
-    def _non_terminal(self, expansion: list[GrammarRule]) -> list[GrammarRule]:
-        return [
+    def _non_terminal(self, expansion: tuple[GrammarRule, ...]) -> tuple[GrammarRule, ...]:
+        return tuple(
             rule
             for rule in expansion
             if rule.accept(non_terminal_visitor)
-        ]
+        )
 
-    def _rule_cost(self, rule: GrammarRule, seen: set[int]) -> float:
+    def _rule_cost(self, rule: GrammarRule, seen: set[GrammarRule]) -> float:
         return min(
             self._expansion_cost(expansion, seen)
             for expansion in rule.accept(self._expansions_visitor)
         )
 
-    def _expansion_cost(self, expansions: list[GrammarRule], seen: set[int] | None = None) -> float:
+    def _expansion_cost(self, expansions: tuple[GrammarRule, ...], seen: set[GrammarRule] | None = None) -> float:
         if seen is None:
             seen = set()
 
@@ -203,10 +203,10 @@ class GrammarFuzzer:
         if not rules:
             return 1.0
 
-        if any(id(rule) in seen for rule in rules):
+        if any(rule in seen for rule in rules):
             return float("inf")
 
-        seen.update(id(rule) for rule in rules)
+        seen.update(rule for rule in rules)
 
         return sum(
             self._rule_cost(rule, seen)
@@ -218,7 +218,7 @@ class GrammarFuzzer:
 
         expansions = node.rule.accept(self._expansions_visitor)
 
-        expansions_costs: dict[float, list[list[GrammarRule]]] = {}
+        expansions_costs: dict[float, list[tuple[GrammarRule, ...]]] = {}
 
         for expansion in expansions:
             cost = self._expansion_cost(expansion)

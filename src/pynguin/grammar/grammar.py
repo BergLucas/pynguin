@@ -4,10 +4,10 @@ from typing import Protocol, TypeVar
 from abc import abstractmethod
 
 
-@dataclass
+@dataclass(frozen=True)
 class Grammar:
     initial_rule: str
-    expansions: dict[str, list[GrammarRule]]
+    expansions: dict[str, tuple[GrammarRule, ...]]
 
 T = TypeVar("T", covariant=True)
 
@@ -90,28 +90,28 @@ class GrammarRule(Protocol):
             T: The result of accepting the visitor.
         """
 
-@dataclass
+@dataclass(frozen=True)
 class Constant(GrammarRule):
     value: str
 
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_constant(self)
 
-@dataclass
+@dataclass(frozen=True)
 class Sequence(GrammarRule):
-    rules: list[GrammarRule]
+    rules: tuple[GrammarRule, ...]
 
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_sequence(self)
 
-@dataclass 
+@dataclass(frozen=True)
 class RuleReference(GrammarRule):
     name: str
 
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_rule_reference(self)
 
-@dataclass
+@dataclass(frozen=True)
 class AnyChar(GrammarRule):
     min_code: int = 32
     max_code: int = 128
@@ -119,14 +119,14 @@ class AnyChar(GrammarRule):
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_any_char(self)
 
-@dataclass
+@dataclass(frozen=True)
 class Choice(GrammarRule):
-    rules: list[GrammarRule]
+    rules: tuple[GrammarRule, ...]
 
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_choice(self)
 
-@dataclass
+@dataclass(frozen=True)
 class Repeat(GrammarRule):
     rule: GrammarRule
     min: int = 0

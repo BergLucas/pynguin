@@ -19,7 +19,7 @@ import pynguin.testcase.statement as stmt
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
-from pynguin.analyses.constants import ConstantProvider
+from pynguin.analyses.constants import ConstantProvider, DelegatingConstantProvider
 from pynguin.analyses.constants import EmptyConstantProvider
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import InferredSignature
@@ -30,7 +30,7 @@ from pynguin.analyses.typesystem import TupleType
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
 from pynguin.analyses.typesystem import accept_csv_file_like_object
-from pynguin.grammar.csv import CSV_GRAMMAR
+from pynguin.grammar.csv import create_csv_grammar
 from pynguin.grammar.fuzzer import GrammarFuzzer
 from pynguin.utils import randomness
 from pynguin.utils.exceptions import ConstructionFailedException
@@ -1341,11 +1341,19 @@ class TestFactory:
         recursion_depth: int,
     ) -> vr.VariableReference:
         type_info = test_case.test_cluster.type_system.alias_to_type_info("io.StringIO")
+
+        assert type_info is not None
+
         accessible = gao.GenericConstructor(type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO))
-        ref = self.add_primitive(test_case, stmt.GrammarBasedStringPrimitiveStatement(test_case, GrammarFuzzer(CSV_GRAMMAR)), position)
+
+        csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=10)
+
+        ref = self.add_primitive(test_case, stmt.GrammarBasedStringPrimitiveStatement(test_case, GrammarFuzzer(csv_grammar)), position)
+
         statement = stmt.ConstructorStatement(test_case, accessible, dict(initial_value=ref))
         ret = test_case.add_variable_creating_statement(statement, position+1)
         ret.distance = recursion_depth
+
         return ret
 
     def has_call_on_sut(self, test_case: tc.TestCase) -> bool:

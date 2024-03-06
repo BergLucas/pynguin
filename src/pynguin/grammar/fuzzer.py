@@ -86,7 +86,7 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]
         return [(rule,) for rule in self._grammar.expansions[rule_reference.name]]
 
     def visit_any_char(self, any_char: AnyChar) -> list[tuple[GrammarRule, ...]]:
-        return [(Constant(chr(i)),) for i in range(any_char.min_code, any_char.max_code)]
+        return [(Constant(chr(code)),) for code in any_char.codes]
 
     def visit_choice(self, choice: Choice) -> list[tuple[GrammarRule, ...]]:
         return [(rule,) for rule in choice.rules]

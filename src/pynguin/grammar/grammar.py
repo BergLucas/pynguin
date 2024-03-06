@@ -113,8 +113,27 @@ class RuleReference(GrammarRule):
 
 @dataclass(frozen=True)
 class AnyChar(GrammarRule):
-    min_code: int = 32
-    max_code: int = 128
+    codes: tuple[int, ...]
+
+    @classmethod
+    def from_range(cls, min_code: int, max_code: int) -> AnyChar:
+        return cls(tuple(range(min_code, max_code)))
+
+    @classmethod
+    def printable(cls) -> AnyChar:
+        return cls.from_range(32, 128)
+
+    @classmethod
+    def letters(cls) -> AnyChar:
+        return cls((*range(65, 91), *range(97, 123)))
+
+    @classmethod
+    def digits(cls) -> AnyChar:
+        return cls.from_range(48, 58)
+
+    @classmethod
+    def letters_and_digits(cls) -> AnyChar:
+        return cls((*range(65, 91), *range(97, 123), *range(48, 58)))
 
     def accept(self, visitor: GrammarRuleVisitor[T]) -> T:
         return visitor.visit_any_char(self)

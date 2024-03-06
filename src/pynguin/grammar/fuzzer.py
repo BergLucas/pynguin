@@ -91,11 +91,19 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]
     def visit_choice(self, choice: Choice) -> list[tuple[GrammarRule, ...]]:
         return [(rule,) for rule in choice.rules]
 
-    def visit_repeat(self, repeat: Repeat) -> list[tuple[GrammarRule, ...]]: 
-        expansions: list[tuple[GrammarRule, ...]] = []
-        if repeat.min == 0:
-            expansions.append(tuple())
-        expansions.append((repeat.rule,))
+    def visit_repeat(self, repeat: Repeat) -> list[tuple[GrammarRule, ...]]:
+        if repeat.min > 0:
+            new_max_repeat = repeat.max - repeat.min if repeat.max is not None else None
+            return [(
+                Sequence(
+                    (
+                        *(repeat.rule for _ in range(repeat.min)),
+                        Repeat(repeat.rule, min=0, max=new_max_repeat)
+                    )
+                ),
+            )]
+
+        expansions: list[tuple[GrammarRule, ...]] = [tuple()]
         if repeat.max is None:
             expansions.append((repeat.rule, repeat))
         elif repeat.max > 1:
@@ -147,11 +155,13 @@ class GrammarDerivationTree:
         return f"GrammarDerivationTree({self.symbol}, {self.children})"
 
 class GrammarFuzzer:
-    def __init__(self, grammar: Grammar) -> None:
+    def __init__(self, grammar: Grammar, min_non_terminal: int = 0, max_non_terminal: int = 10) -> None:
+        assert min_non_terminal <= max_non_terminal
+
         self._grammar = grammar
         self._expansions_visitor = GrammarExpansionsVisitor(grammar)
-        self._min_non_terminal = 10
-        self._max_non_terminal = 100
+        self._min_non_terminal = min_non_terminal
+        self._max_non_terminal = max_non_terminal
 
     @property
     def grammar(self) -> Grammar:
@@ -218,7 +228,7 @@ class GrammarFuzzer:
 
         seen.update(rule for rule in rules)
 
-        return sum(
+        return 1.0 + sum(
             self._rule_cost(rule, seen)
             for rule in rules
         )

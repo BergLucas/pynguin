@@ -118,6 +118,16 @@ class GrammarDerivationTree:
             in self.children
         )
 
+    def __deepcopy__(self, memo: dict[int, object]) -> GrammarDerivationTree:
+        if self.children is None:
+            return GrammarDerivationTree(self.symbol, self.rule, None)
+
+        return GrammarDerivationTree(
+            self.symbol,
+            self.rule,
+            [child.__deepcopy__(memo) for child in self.children]
+        )
+
     def __str__(self) -> str:
         value = self.rule.accept(value_visitor)
 

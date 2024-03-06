@@ -23,6 +23,7 @@ import pynguin.configuration as config
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
+from copy import deepcopy
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import InferredSignature
 from pynguin.analyses.typesystem import Instance
@@ -1859,7 +1860,7 @@ class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
         self._value = str(self._derivation_tree)
 
     def clone(self, test_case: tc.TestCase, memo: dict[vr.VariableReference, vr.VariableReference]) -> StringPrimitiveStatement:
-        return GrammarBasedStringPrimitiveStatement(test_case, self._fuzzer, self._derivation_tree)
+        return GrammarBasedStringPrimitiveStatement(test_case, self._fuzzer, deepcopy(self._derivation_tree))
 
 
 class BytesPrimitiveStatement(PrimitiveStatement[bytes]):

@@ -1346,9 +1346,9 @@ class TestFactory:
 
         accessible = gao.GenericConstructor(type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO))
 
-        csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=10)
+        csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=3)
 
-        ref = self.add_primitive(test_case, stmt.GrammarBasedStringPrimitiveStatement(test_case, GrammarFuzzer(csv_grammar, 25, 100)), position)
+        ref = self.add_primitive(test_case, stmt.GrammarBasedStringPrimitiveStatement(test_case, GrammarFuzzer(csv_grammar, 0, 100)), position)
 
         statement = stmt.ConstructorStatement(test_case, accessible, dict(initial_value=ref))
         ret = test_case.add_variable_creating_statement(statement, position+1)

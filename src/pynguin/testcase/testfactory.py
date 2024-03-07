@@ -1107,36 +1107,37 @@ class TestFactory:
         *,
         allow_none: bool,
     ) -> vr.VariableReference | None:
-        # We only select a concrete type e.g. from a union, when we are forced to
-        # choose one.
-        parameter_type = self._test_cluster.select_concrete_type(parameter_type)
-
-        if isinstance(parameter_type, NoneType):
-            return self._create_none(test_case, position, recursion_depth)
-        # TODO(fk) think about creating collections/primitives from calls?
-        if parameter_type.accept(is_primitive_type):
-            return self._create_primitive(
-                test_case,
-                cast(Instance, parameter_type),
-                position,
-                recursion_depth,
-                constant_provider=self._constant_provider,
-            )
-        if parameter_type.accept(is_collection_type):
-            return self._create_collection(
-                test_case,
-                parameter_type,
-                position,
-                recursion_depth,
-            )
         if parameter_type.accept(accept_csv_file_like_object) and randomness.next_float() < 0.25:
             return self._create_csv_file_like_object(
                 test_case,
                 position,
                 recursion_depth,
             )
+
+        # We only select a concrete type e.g. from a union, when we are forced to
+        # choose one.
+        concrete_parameter_type = self._test_cluster.select_concrete_type(parameter_type)
+
+        if isinstance(concrete_parameter_type, NoneType):
+            return self._create_none(test_case, position, recursion_depth)
+        # TODO(fk) think about creating collections/primitives from calls?
+        if concrete_parameter_type.accept(is_primitive_type):
+            return self._create_primitive(
+                test_case,
+                cast(Instance, concrete_parameter_type),
+                position,
+                recursion_depth,
+                constant_provider=self._constant_provider,
+            )
+        if concrete_parameter_type.accept(is_collection_type):
+            return self._create_collection(
+                test_case,
+                concrete_parameter_type,
+                position,
+                recursion_depth,
+            )
         type_generators, only_any = self._test_cluster.get_generators_for(
-            parameter_type
+            concrete_parameter_type
         )
         if type_generators and not only_any:
             type_generator = randomness.choice(type_generators)

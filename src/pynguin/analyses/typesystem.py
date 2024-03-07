@@ -596,10 +596,10 @@ class _CsvFileLikeVisitor(TypeVisitor[bool]):
 
     def visit_tuple_type(self, left: TupleType) -> bool:
         return False
-    
+
     def visit_union_type(self, left: UnionType) -> bool:
-        return False
-    
+        return any(left_elem.accept(self) for left_elem in left.items)
+
     def visit_unsupported_type(self, left: Unsupported) -> bool:
         raise NotImplementedError("This type shall not be used during runtime")
 

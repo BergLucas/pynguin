@@ -8,8 +8,8 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 import io
+import logging
 
 from typing import TYPE_CHECKING
 from typing import cast
@@ -19,7 +19,8 @@ import pynguin.testcase.statement as stmt
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
-from pynguin.analyses.constants import ConstantProvider, DelegatingConstantProvider
+from pynguin.analyses.constants import ConstantProvider
+from pynguin.analyses.constants import DelegatingConstantProvider
 from pynguin.analyses.constants import EmptyConstantProvider
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import InferredSignature
@@ -27,9 +28,9 @@ from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
+from pynguin.analyses.typesystem import accept_csv_file_like_object
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
-from pynguin.analyses.typesystem import accept_csv_file_like_object
 from pynguin.grammar.csv import create_csv_grammar
 from pynguin.grammar.fuzzer import GrammarFuzzer
 from pynguin.utils import randomness
@@ -1107,7 +1108,10 @@ class TestFactory:
         *,
         allow_none: bool,
     ) -> vr.VariableReference | None:
-        if parameter_type.accept(accept_csv_file_like_object) and randomness.next_float() < 0.25:
+        if (
+            parameter_type.accept(accept_csv_file_like_object)
+            and randomness.next_float() < 0.25
+        ):
             return self._create_csv_file_like_object(
                 test_case,
                 position,
@@ -1116,7 +1120,9 @@ class TestFactory:
 
         # We only select a concrete type e.g. from a union, when we are forced to
         # choose one.
-        concrete_parameter_type = self._test_cluster.select_concrete_type(parameter_type)
+        concrete_parameter_type = self._test_cluster.select_concrete_type(
+            parameter_type
+        )
 
         if isinstance(concrete_parameter_type, NoneType):
             return self._create_none(test_case, position, recursion_depth)
@@ -1345,14 +1351,24 @@ class TestFactory:
 
         assert type_info is not None
 
-        accessible = gao.GenericConstructor(type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO))
+        accessible = gao.GenericConstructor(
+            type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO)
+        )
 
         csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=3)
 
-        ref = self.add_primitive(test_case, stmt.GrammarBasedStringPrimitiveStatement(test_case, GrammarFuzzer(csv_grammar, 0, 100)), position)
+        ref = self.add_primitive(
+            test_case,
+            stmt.GrammarBasedStringPrimitiveStatement(
+                test_case, GrammarFuzzer(csv_grammar, 0, 100)
+            ),
+            position,
+        )
 
-        statement = stmt.ConstructorStatement(test_case, accessible, dict(initial_value=ref))
-        ret = test_case.add_variable_creating_statement(statement, position+1)
+        statement = stmt.ConstructorStatement(
+            test_case, accessible, dict(initial_value=ref)
+        )
+        ret = test_case.add_variable_creating_statement(statement, position + 1)
         ret.distance = recursion_depth
 
         return ret

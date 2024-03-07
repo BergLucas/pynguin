@@ -12,6 +12,7 @@ import logging
 import math
 
 from abc import abstractmethod
+from copy import deepcopy
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
@@ -23,14 +24,14 @@ import pynguin.configuration as config
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
-from copy import deepcopy
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import InferredSignature
 from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TypeInfo
-from pynguin.grammar.fuzzer import GrammarFuzzer, GrammarDerivationTree
+from pynguin.grammar.fuzzer import GrammarDerivationTree
+from pynguin.grammar.fuzzer import GrammarFuzzer
 from pynguin.utils import randomness
 from pynguin.utils.mutation_utils import alpha_exponent_insertion
 from pynguin.utils.orderedset import OrderedSet
@@ -1859,8 +1860,14 @@ class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
         self._fuzzer.mutate_tree(self._derivation_tree)
         self._value = str(self._derivation_tree)
 
-    def clone(self, test_case: tc.TestCase, memo: dict[vr.VariableReference, vr.VariableReference]) -> StringPrimitiveStatement:
-        return GrammarBasedStringPrimitiveStatement(test_case, self._fuzzer, deepcopy(self._derivation_tree))
+    def clone(
+        self,
+        test_case: tc.TestCase,
+        memo: dict[vr.VariableReference, vr.VariableReference],
+    ) -> StringPrimitiveStatement:
+        return GrammarBasedStringPrimitiveStatement(
+            test_case, self._fuzzer, deepcopy(self._derivation_tree)
+        )
 
 
 class BytesPrimitiveStatement(PrimitiveStatement[bytes]):

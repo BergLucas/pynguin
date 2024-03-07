@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 import functools
+import importlib
 import inspect
+import io
 import logging
 import re
 import types
 import typing
-import importlib
-import io
 
 from abc import ABC
 from abc import abstractmethod
@@ -921,10 +921,10 @@ class InferredSignature:
         )
     )
     # fmt: on
-    _SET_ELEMENT_FROM_ARGUMENT_TYPES_PATH: OrderedSet[tuple[str, ...]] = (
-        OrderedSet(  # noqa: RUF009
-            [("add", "__call__"), ("remove", "__call__"), ("discard", "__call__")]
-        )
+    _SET_ELEMENT_FROM_ARGUMENT_TYPES_PATH: OrderedSet[
+        tuple[str, ...]
+    ] = OrderedSet(  # noqa: RUF009
+        [("add", "__call__"), ("remove", "__call__"), ("discard", "__call__")]
     )
     # Nothing for tuple and dict.
     _EMPTY_SET: OrderedSet[tuple[str, ...]] = OrderedSet()  # noqa: RUF009
@@ -1468,7 +1468,7 @@ class TypeSystem:  # noqa: PLR0904
 
     def alias_to_type_info(self, alias: str) -> TypeInfo | None:
         """Find or create type info for the give alias.
-        
+
         Args:
             alias: The name of the alias.
 

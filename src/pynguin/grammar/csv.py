@@ -1,6 +1,18 @@
-from pynguin.grammar.grammar import Grammar, GrammarRule, RuleReference, Sequence, Repeat, Constant, AnyChar, Choice
+from pynguin.grammar.grammar import AnyChar
+from pynguin.grammar.grammar import Choice
+from pynguin.grammar.grammar import Constant
+from pynguin.grammar.grammar import Grammar
+from pynguin.grammar.grammar import GrammarRule
+from pynguin.grammar.grammar import Repeat
+from pynguin.grammar.grammar import RuleReference
+from pynguin.grammar.grammar import Sequence
 
-def create_csv_grammar(nb_columns: int, string_constants: list[str] | None = None, min_field_length: int = 0) -> Grammar:
+
+def create_csv_grammar(
+    nb_columns: int,
+    string_constants: list[str] | None = None,
+    min_field_length: int = 0,
+) -> Grammar:
     assert nb_columns > 0
 
     rules: list[GrammarRule] = [RuleReference("field")]
@@ -12,12 +24,7 @@ def create_csv_grammar(nb_columns: int, string_constants: list[str] | None = Non
     if string_constants is None:
         field_rule = Repeat(AnyChar.letters_and_digits(), min=min_field_length)
     else:
-        field_rule = Choice(
-            tuple(
-                Constant(constant)
-                for constant in string_constants
-            )
-        )
+        field_rule = Choice(tuple(Constant(constant) for constant in string_constants))
 
     return Grammar(
         "csv",
@@ -28,5 +35,5 @@ def create_csv_grammar(nb_columns: int, string_constants: list[str] | None = Non
                 field_rule,
                 Sequence((Constant('"'), field_rule, Constant('"'))),
             ),
-        )
+        ),
     )

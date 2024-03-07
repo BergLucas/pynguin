@@ -1,8 +1,18 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from pynguin.grammar.grammar import Grammar, GrammarRule, GrammarRuleVisitor, AnyChar, Choice, Sequence, Repeat, RuleReference, Constant
-from pynguin.utils import randomness
 from typing import Callable
+
+from pynguin.grammar.grammar import AnyChar
+from pynguin.grammar.grammar import Choice
+from pynguin.grammar.grammar import Constant
+from pynguin.grammar.grammar import Grammar
+from pynguin.grammar.grammar import GrammarRule
+from pynguin.grammar.grammar import GrammarRuleVisitor
+from pynguin.grammar.grammar import Repeat
+from pynguin.grammar.grammar import RuleReference
+from pynguin.grammar.grammar import Sequence
+from pynguin.utils import randomness
 
 
 class GrammarNonTerminalVisitor(GrammarRuleVisitor[bool]):
@@ -26,7 +36,9 @@ class GrammarNonTerminalVisitor(GrammarRuleVisitor[bool]):
             return True
         return repeat.rule.accept(self)
 
+
 non_terminal_visitor = GrammarNonTerminalVisitor()
+
 
 class GrammarValueVisitor(GrammarRuleVisitor[str | None]):
     def visit_constant(self, constant: Constant) -> str:
@@ -47,7 +59,9 @@ class GrammarValueVisitor(GrammarRuleVisitor[str | None]):
     def visit_repeat(self, repeat: Repeat) -> None:
         return None
 
+
 value_visitor = GrammarValueVisitor()
+
 
 class GrammarSymbolVisitor(GrammarRuleVisitor[str]):
     def visit_constant(self, constant: Constant) -> str:
@@ -68,11 +82,11 @@ class GrammarSymbolVisitor(GrammarRuleVisitor[str]):
     def visit_repeat(self, repeat: Repeat) -> str:
         return "repeat"
 
+
 symbol_visitor = GrammarSymbolVisitor()
 
 
 class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]):
-
     def __init__(self, grammar: Grammar) -> None:
         self._grammar = grammar
 
@@ -82,7 +96,9 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]
     def visit_sequence(self, sequence: Sequence) -> list[tuple[GrammarRule, ...]]:
         return [sequence.rules]
 
-    def visit_rule_reference(self, rule_reference: RuleReference) -> list[tuple[GrammarRule, ...]]:
+    def visit_rule_reference(
+        self, rule_reference: RuleReference
+    ) -> list[tuple[GrammarRule, ...]]:
         return [(rule,) for rule in self._grammar.expansions[rule_reference.name]]
 
     def visit_any_char(self, any_char: AnyChar) -> list[tuple[GrammarRule, ...]]:
@@ -94,21 +110,26 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]
     def visit_repeat(self, repeat: Repeat) -> list[tuple[GrammarRule, ...]]:
         if repeat.min > 0:
             new_max_repeat = repeat.max - repeat.min if repeat.max is not None else None
-            return [(
-                Sequence(
-                    (
-                        *(repeat.rule for _ in range(repeat.min)),
-                        Repeat(repeat.rule, min=0, max=new_max_repeat)
-                    )
-                ),
-            )]
+            return [
+                (
+                    Sequence(
+                        (
+                            *(repeat.rule for _ in range(repeat.min)),
+                            Repeat(repeat.rule, min=0, max=new_max_repeat),
+                        )
+                    ),
+                )
+            ]
 
         expansions: list[tuple[GrammarRule, ...]] = [tuple()]
         if repeat.max is None:
             expansions.append((repeat.rule, repeat))
         elif repeat.max > 1:
-            expansions.append((repeat.rule, Repeat(repeat.rule, repeat.min, repeat.max - 1)))
+            expansions.append(
+                (repeat.rule, Repeat(repeat.rule, repeat.min, repeat.max - 1))
+            )
         return expansions
+
 
 @dataclass
 class GrammarDerivationTree:
@@ -120,11 +141,7 @@ class GrammarDerivationTree:
         if self.children is None:
             return 1
 
-        return sum(
-            child.possible_expansions()
-            for child
-            in self.children
-        )
+        return sum(child.possible_expansions() for child in self.children)
 
     def __deepcopy__(self, memo: dict[int, object]) -> GrammarDerivationTree:
         if self.children is None:
@@ -133,7 +150,7 @@ class GrammarDerivationTree:
         return GrammarDerivationTree(
             self.symbol,
             self.rule,
-            [child.__deepcopy__(memo) for child in self.children]
+            [child.__deepcopy__(memo) for child in self.children],
         )
 
     def __str__(self) -> str:
@@ -145,17 +162,16 @@ class GrammarDerivationTree:
         if value is not None:
             return value
 
-        return "".join(
-            str(child)
-            for child
-            in self.children
-        )
+        return "".join(str(child) for child in self.children)
 
     def __repr__(self) -> str:
         return f"GrammarDerivationTree({self.symbol}, {self.children})"
 
+
 class GrammarFuzzer:
-    def __init__(self, grammar: Grammar, min_non_terminal: int = 0, max_non_terminal: int = 10) -> None:
+    def __init__(
+        self, grammar: Grammar, min_non_terminal: int = 0, max_non_terminal: int = 10
+    ) -> None:
         assert min_non_terminal <= max_non_terminal
 
         self._grammar = grammar
@@ -201,12 +217,10 @@ class GrammarFuzzer:
             for rule in expansion
         ]
 
-    def _non_terminal(self, expansion: tuple[GrammarRule, ...]) -> tuple[GrammarRule, ...]:
-        return tuple(
-            rule
-            for rule in expansion
-            if rule.accept(non_terminal_visitor)
-        )
+    def _non_terminal(
+        self, expansion: tuple[GrammarRule, ...]
+    ) -> tuple[GrammarRule, ...]:
+        return tuple(rule for rule in expansion if rule.accept(non_terminal_visitor))
 
     def _rule_cost(self, rule: GrammarRule, seen: set[GrammarRule]) -> float:
         return min(
@@ -214,7 +228,9 @@ class GrammarFuzzer:
             for expansion in rule.accept(self._expansions_visitor)
         )
 
-    def _expansion_cost(self, expansions: tuple[GrammarRule, ...], seen: set[GrammarRule] | None = None) -> float:
+    def _expansion_cost(
+        self, expansions: tuple[GrammarRule, ...], seen: set[GrammarRule] | None = None
+    ) -> float:
         if seen is None:
             seen = set()
 
@@ -228,12 +244,11 @@ class GrammarFuzzer:
 
         seen.update(rule for rule in rules)
 
-        return 1.0 + sum(
-            self._rule_cost(rule, seen)
-            for rule in rules
-        )
+        return 1.0 + sum(self._rule_cost(rule, seen) for rule in rules)
 
-    def _expand_node_by_cost(self, node: GrammarDerivationTree, cost_function: Callable) -> None:
+    def _expand_node_by_cost(
+        self, node: GrammarDerivationTree, cost_function: Callable
+    ) -> None:
         assert node.children is None
 
         expansions = node.rule.accept(self._expansions_visitor)
@@ -259,25 +274,29 @@ class GrammarFuzzer:
     def _expand_node_max_cost(self, node: GrammarDerivationTree) -> None:
         self._expand_node_by_cost(node, max)
 
-    def _expand_tree_once(self, tree: GrammarDerivationTree, expand_node_function: Callable) -> None:
+    def _expand_tree_once(
+        self, tree: GrammarDerivationTree, expand_node_function: Callable
+    ) -> None:
         if tree.children is None:
             expand_node_function(tree)
             return
 
         children_to_expand = [
-            child
-            for child in tree.children
-            if child.possible_expansions() > 0
+            child for child in tree.children if child.possible_expansions() > 0
         ]
 
         child = randomness.choice(children_to_expand)
 
         self._expand_tree_once(child, expand_node_function)
 
-    def _expand_tree(self, tree: GrammarDerivationTree, expand_node_function: Callable, limit: float | None) -> None:
-        while (
-            (possible_expansions := tree.possible_expansions()) > 0
-            and (limit is None or possible_expansions < limit)
+    def _expand_tree(
+        self,
+        tree: GrammarDerivationTree,
+        expand_node_function: Callable,
+        limit: float | None,
+    ) -> None:
+        while (possible_expansions := tree.possible_expansions()) > 0 and (
+            limit is None or possible_expansions < limit
         ):
             self._expand_tree_once(tree, expand_node_function)
 

@@ -21,6 +21,7 @@ def create_csv_grammar(
         rules.append(RuleReference("field"))
     rules.append(Constant("\n"))
 
+    field_rule: GrammarRule
     if string_constants is None:
         field_rule = Repeat(AnyChar.letters_and_digits(), min=min_field_length)
     else:

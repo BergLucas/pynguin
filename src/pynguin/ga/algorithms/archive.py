@@ -110,6 +110,11 @@ class CoverageArchive(Archive):
         self._uncovered = OrderedSet(objectives)
         self._objectives = OrderedSet(objectives)
 
+    def _get_exception_number(self, result: tcc.TestCaseChromosome | None) -> int:
+        if result is not None and (execution_result := result.get_last_execution_result()) is not None:
+            return len(execution_result.exceptions)
+        return sys.maxsize
+
     def update(self, solutions: Iterable[tcc.TestCaseChromosome]) -> bool:
         """Updates this archive with the given set of solutions.
 
@@ -126,12 +131,14 @@ class CoverageArchive(Archive):
         for objective in self._objectives:
             best_solution = self._covered.get(objective, None)
             best_size = sys.maxsize if best_solution is None else best_solution.size()
+            best_exception_nb = self._get_exception_number(best_solution)
 
             for solution in solutions:
                 covers = solution.get_is_covered(objective)
                 size = solution.size()
+                exception_nb = self._get_exception_number(best_solution)
 
-                if covers and size < best_size:
+                if covers and (size < best_size or exception_nb < best_exception_nb):
                     updated = True
                     self._covered[objective] = solution
                     best_size = size

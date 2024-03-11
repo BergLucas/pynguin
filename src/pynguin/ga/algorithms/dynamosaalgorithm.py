@@ -70,7 +70,13 @@ class DynaMOSAAlgorithm(AbstractMOSAAlgorithm):
         self.before_first_search_iteration(
             self.create_test_suite(self._archive.solutions)
         )
-        while self.resources_left() and len(self._archive.uncovered_goals) > 0:
+        while (
+            self.resources_left()
+            and (
+                len(self._archive.uncovered_goals) > 0
+                or not self._has_enough_passing_tests()
+            )
+        ):
             self.evolve()
             self.after_search_iteration(self.create_test_suite(self._archive.solutions))
 
@@ -80,6 +86,14 @@ class DynaMOSAAlgorithm(AbstractMOSAAlgorithm):
             if len(self._archive.solutions) > 0
             else self._get_best_individuals()
         )
+
+    def _has_enough_passing_tests(self) -> bool:
+        nb_passing_tests = 0
+        for solution in self._archive.solutions:
+            result = solution.get_last_execution_result()
+            if result is not None and not result.exceptions:
+                nb_passing_tests += 1
+        return nb_passing_tests >= len(self._archive.solutions) * 0.5
 
     def evolve(self) -> None:
         """Runs one evolution step."""

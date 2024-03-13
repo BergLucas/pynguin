@@ -8,7 +8,6 @@
 # https://github.com/ipsw1/pychecco
 
 import importlib.util
-import threading
 
 from types import CodeType
 
@@ -108,16 +107,20 @@ def _contains_name_argtype(
     return None  # pragma: no cover
 
 
-def slice_function_at_return(function: callable) -> list[UniqueInstruction]:
-    tracer = ExecutionTracer()
+def slice_function_at_return(function: callable, tracer: ExecutionTracer | None = None) -> list[UniqueInstruction]:
+    if tracer is None:
+        tracer = ExecutionTracer()
+
     instrumentation = CheckedCoverageInstrumentation(tracer)
     instrumentation_transformer = InstrumentationTransformer(tracer, [instrumentation])
 
     function.__code__ = instrumentation_transformer.instrument_module(function.__code__)
-    tracer.current_thread_identifier = threading.current_thread().ident
-    function()
 
-    trace = tracer.get_trace()
+    with tracer.get_tracing_context():
+        function()
+
+        trace = tracer.get_trace()
+
     known_code_objects = tracer.get_subject_properties().existing_code_objects
     dynamic_slicer = DynamicSlicer(known_code_objects)
 
@@ -145,8 +148,11 @@ def slice_module_at_return(module_name: str) -> list[UniqueInstruction]:
         config.CoverageMetric.CHECKED
     ]
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
         module.func()

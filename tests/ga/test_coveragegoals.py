@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ast
 import importlib
-import threading
 
 from unittest import mock
 from unittest.mock import MagicMock
@@ -185,9 +184,13 @@ def test_compute_fitness_values_mocked(
 
 def test_compute_fitness_values_no_branches():
     module_name = "tests.fixtures.branchcoverage.nobranches"
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -252,8 +255,11 @@ def test_compute_fitness_values_no_branches():
 )
 def test_compute_fitness_values_branches(test_case, expected_fitness, module_name):
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -294,9 +300,13 @@ def _get_test_for_no_branches_fixture(module_name) -> tcc.TestCaseChromosome:
 
 def test_compute_fitness_values_statement_coverage_empty():
     module_name = "tests.fixtures.linecoverage.emptyfile"
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -350,11 +360,12 @@ def test_compute_fitness_values_statement_coverage_non_empty_file(
 
     tracer = ExecutionTracer()
     tracer.get_subject_properties().existing_lines = _get_lines_data_for_plus_module()
-
-    tracer.current_thread_identifier = threading.current_thread().ident
     executor_mock.tracer = tracer
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 

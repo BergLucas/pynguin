@@ -51,9 +51,13 @@ str_1 = human_0.get_name()""",
 def test_generate_mutation_assertions(generator, expected_result):
     config.configuration.module_name = "tests.fixtures.examples.assertions"
     module_name = config.configuration.module_name
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         importlib.reload(importlib.import_module(module_name))
         cluster = generate_test_cluster(module_name)
         transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())
@@ -262,9 +266,13 @@ def test_mutation_analysis_integration_full(
 ):
     config.configuration.module_name = module
     module_name = config.configuration.module_name
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         importlib.reload(importlib.import_module(module_name))
         cluster = generate_test_cluster(module_name)
         transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())

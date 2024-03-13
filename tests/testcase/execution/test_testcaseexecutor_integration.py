@@ -28,9 +28,13 @@ from pynguin.testcase.statement import MethodStatement
 
 def test_simple_execution(default_test_case):
     config.configuration.module_name = "tests.fixtures.accessibles.accessible"
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(config.configuration.module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(config.configuration.module_name, tracer)
+    ):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
         default_test_case.add_statement(IntPrimitiveStatement(default_test_case, 5))
@@ -44,9 +48,13 @@ def test_illegal_call(method_mock, default_test_case):
     method_stmt = MethodStatement(default_test_case, method_mock, int_stmt.ret_val)
     default_test_case.add_statement(int_stmt)
     default_test_case.add_statement(method_stmt)
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(config.configuration.module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(config.configuration.module_name, tracer)
+    ):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
         executor = TestCaseExecutor(tracer)
@@ -56,9 +64,13 @@ def test_illegal_call(method_mock, default_test_case):
 
 def test_no_exceptions(short_test_case):
     config.configuration.module_name = "tests.fixtures.accessibles.accessible"
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(config.configuration.module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(config.configuration.module_name, tracer)
+    ):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
         executor = TestCaseExecutor(tracer)
@@ -71,9 +83,13 @@ def test_instrumentation(short_test_case):
     config.configuration.statistics_output.coverage_metrics = [
         config.CoverageMetric.CHECKED
     ]
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(config.configuration.module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(config.configuration.module_name, tracer)
+    ):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
         executor = TestCaseExecutor(tracer)
@@ -84,12 +100,15 @@ def test_instrumentation(short_test_case):
 
 def test_observers(short_test_case):
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
     executor = TestCaseExecutor(tracer)
     observer = MagicMock()
+
     observer.before_statement_execution.side_effect = lambda x, y, z: y
     executor.add_observer(observer)
-    executor.execute(short_test_case)
+
+    with tracer.get_tracing_context():
+        executor.execute(short_test_case)
+
     assert observer.before_test_case_execution.call_count == 1
     assert observer.before_statement_execution.call_count == 2
     assert observer.after_statement_execution.call_count == 2
@@ -99,9 +118,9 @@ def test_observers(short_test_case):
 
 def test_observers_clear(short_test_case):
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
     executor = TestCaseExecutor(tracer)
     observer = MagicMock()
+
     executor.add_observer(observer)
     assert executor._observers == [observer]
     executor.clear_observers()
@@ -110,9 +129,9 @@ def test_observers_clear(short_test_case):
 
 def test_module_provider():
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
     prov = ModuleProvider()
     executor = TestCaseExecutor(tracer, prov)
+
     assert executor.module_provider == prov
 
 
@@ -120,9 +139,13 @@ def test_module_provider():
 def test_killing_endless_loop():
     config.configuration.module_name = "tests.fixtures.examples.loop"
     module_name = config.configuration.module_name
+
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook(module_name, tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         # Need to force reload in order to apply instrumentation
         module = importlib.import_module(module_name)
         importlib.reload(module)

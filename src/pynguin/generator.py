@@ -24,7 +24,6 @@ import importlib
 import json
 import logging
 import sys
-import threading
 
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -54,6 +53,7 @@ from pynguin.testcase import export
 from pynguin.testcase.execution import AssertionExecutionObserver
 from pynguin.testcase.execution import ExecutionTracer
 from pynguin.testcase.execution import TestCaseExecutor
+from pynguin.testcase.execution import ExecutionTracer
 from pynguin.utils import randomness
 from pynguin.utils.report import get_coverage_report
 from pynguin.utils.report import render_coverage_report
@@ -159,9 +159,8 @@ def _setup_import_hook(
 
 def _load_sut(tracer: ExecutionTracer) -> bool:
     try:
-        # We need to set the current thread ident so the import trace is recorded.
-        tracer.current_thread_identifier = threading.current_thread().ident
-        importlib.import_module(config.configuration.module_name)
+        with tracer.get_tracing_context():
+            importlib.import_module(config.configuration.module_name)
     except ImportError as ex:
         # A module could not be imported because some dependencies
         # are missing or it is malformed
@@ -349,19 +348,19 @@ def _reload_instrumentation_loader(
 ):
     module_name = config.configuration.module_name
     module = importlib.import_module(module_name)
-    tracer.current_thread_identifier = threading.current_thread().ident
-    first_finder: InstrumentationFinder | None = None
-    for finder in sys.meta_path:
-        if isinstance(finder, InstrumentationFinder):
-            first_finder = finder
-            break
-    assert first_finder is not None
-    first_finder.update_instrumentation_metrics(
-        tracer=tracer,
-        coverage_metrics=coverage_metrics,
-        dynamic_constant_provider=dynamic_constant_provider,
-    )
-    importlib.reload(module)
+    with tracer.get_tracing_context():
+        first_finder: InstrumentationFinder | None = None
+        for finder in sys.meta_path:
+            if isinstance(finder, InstrumentationFinder):
+                first_finder = finder
+                break
+        assert first_finder is not None
+        first_finder.update_instrumentation_metrics(
+            tracer=tracer,
+            coverage_metrics=coverage_metrics,
+            dynamic_constant_provider=dynamic_constant_provider,
+        )
+        importlib.reload(module)
 
 
 def _reset_cache_for_result(generation_result):

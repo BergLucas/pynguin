@@ -6,7 +6,6 @@
 #
 import asyncio
 import importlib
-import threading
 
 from pynguin.instrumentation.machinery import install_import_hook
 from pynguin.testcase.execution import ExecutionTracer
@@ -14,8 +13,11 @@ from pynguin.testcase.execution import ExecutionTracer
 
 def test_hook():
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook("tests.fixtures.instrumentation.mixed", tracer):
+
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook("tests.fixtures.instrumentation.mixed", tracer)
+    ):
         module = importlib.import_module("tests.fixtures.instrumentation.mixed")
         importlib.reload(module)
         assert len(tracer.get_subject_properties().existing_code_objects) > 0
@@ -25,8 +27,10 @@ def test_hook():
 def test_module_instrumentation_integration():
     """Small integration test, which tests the instrumentation for various function types."""
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with install_import_hook("tests.fixtures.instrumentation.mixed", tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook("tests.fixtures.instrumentation.mixed", tracer)
+    ):
         mixed = importlib.import_module("tests.fixtures.instrumentation.mixed")
         mixed = importlib.reload(mixed)
 

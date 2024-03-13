@@ -19,6 +19,7 @@ from tests.slicer.util import dummy_code_object
 from tests.slicer.util import slice_function_at_return
 from tests.slicer.util import slice_module_at_return
 
+from pynguin.testcase.execution import ExecutionTracer
 
 def test_simple_loop():
     def func():
@@ -472,14 +473,18 @@ def test_nested_class_2():
         ]
     )
 
+    tracer = ExecutionTracer()
+
     expected_instructions = []
     expected_instructions.extend(function_block)
     expected_instructions.extend(foo_block)
     expected_instructions.extend(bar_block)
-    sliced_instructions = slice_function_at_return(func)
-    assert func() == [1, 2]
-    assert len(sliced_instructions) == len(expected_instructions)
-    assert compare(sliced_instructions, expected_instructions)
+    sliced_instructions = slice_function_at_return(func, tracer)
+
+    with tracer.get_tracing_context():
+        assert func() == [1, 2]
+        assert len(sliced_instructions) == len(expected_instructions)
+        assert compare(sliced_instructions, expected_instructions)
 
 
 def test_lambda():

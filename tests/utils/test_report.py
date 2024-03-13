@@ -7,7 +7,6 @@
 import datetime
 import importlib
 import sys
-import threading
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -247,14 +246,17 @@ def test_get_coverage_report(sample_report, tmp_path: Path, demo_module):
     test_case.get_last_execution_result.return_value = last_result
     test_suite = MagicMock(test_case_chromosomes=[test_case])
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
     config.configuration.statistics_output.coverage_metrics = [
         config.CoverageMetric.LINE,
         config.CoverageMetric.BRANCH,
     ]
-    with install_import_hook(test_module, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(test_module, tracer)
+    ):
         importlib.import_module(test_module)
+
     executor = MagicMock(tracer=tracer)
     config.configuration.module_name = test_module
     assert (

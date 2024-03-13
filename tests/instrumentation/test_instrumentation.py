@@ -7,7 +7,6 @@
 import contextlib
 import importlib
 import os
-import threading
 
 from unittest import mock
 from unittest.mock import MagicMock
@@ -266,6 +265,7 @@ def test_integrate_branch_distance_instrumentation(
     branches_count,
 ):
     tracer = ExecutionTracer()
+
     function_callable = getattr(simple_module, function_name)
     adapter = BranchCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
@@ -283,6 +283,7 @@ def test_integrate_branch_distance_instrumentation(
 
 def test_integrate_line_coverage_instrumentation(simple_module):
     tracer = ExecutionTracer()
+
     function_callable = getattr(simple_module, "multi_loop")
     adapter = LineCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
@@ -352,7 +353,7 @@ def test_offset_calculation_checked_coverage_instrumentation(simple_module):
     )
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
+
     function_callable = getattr(simple_module, "bool_predicate")
     adapter = CheckedCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
@@ -360,9 +361,12 @@ def test_offset_calculation_checked_coverage_instrumentation(simple_module):
     function_callable.__code__ = transformer.instrument_module(
         function_callable.__code__
     )
-    function_callable(False)
 
-    trace = tracer.get_trace()
+    with tracer.get_tracing_context():
+        function_callable(False)
+
+        trace = tracer.get_trace()
+
     assert trace.executed_instructions
     assert len(trace.executed_instructions) == len(expected_executed_instructions)
     for expected_instr, actual_instr in zip(
@@ -385,21 +389,22 @@ def test_offset_calculation_checked_coverage_instrumentation(simple_module):
 )
 def test_comparison(comparison_module, op):
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
+
     function_callable = getattr(comparison_module, "_" + op.name.lower())
     adapter = BranchCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
     function_callable.__code__ = transformer.instrument_module(
         function_callable.__code__
     )
+
     with mock.patch.object(tracer, "executed_compare_predicate") as trace_mock:
-        function_callable("a", "a")
+        with tracer.get_tracing_context():
+            function_callable("a", "a")
         trace_mock.assert_called_with("a", "a", 0, op)
 
 
 def test_exception():
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
     def func():
         try:
@@ -410,14 +415,15 @@ def test_exception():
     adapter = BranchCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
     func.__code__ = transformer.instrument_module(func.__code__)
+
     with mock.patch.object(tracer, "executed_exception_match") as trace_mock:
-        func()
+        with tracer.get_tracing_context():
+            func()
         trace_mock.assert_called_with(ValueError, ValueError, 0)
 
 
 def test_exception_no_match():
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
     def func():
         try:
@@ -429,7 +435,10 @@ def test_exception_no_match():
     transformer = InstrumentationTransformer(tracer, [adapter])
     func.__code__ = transformer.instrument_module(func.__code__)
     with mock.patch.object(tracer, "executed_exception_match") as trace_mock:
-        with pytest.raises(RuntimeError):
+        with (
+            pytest.raises(RuntimeError),
+            tracer.get_tracing_context()
+        ):
             func()
         trace_mock.assert_called_with(RuntimeError, ValueError, 0)
 
@@ -446,12 +455,14 @@ def test_exception_integrate():
     adapter = BranchCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
     func.__code__ = transformer.instrument_module(func.__code__)
-    tracer.current_thread_identifier = threading.current_thread().ident
-    func()
-    assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
-    assert {0: 1} == tracer.get_trace().executed_predicates
-    assert {0: 0.0} == tracer.get_trace().true_distances
-    assert {0: 1.0} == tracer.get_trace().false_distances
+
+    with tracer.get_tracing_context():
+        func()
+
+        assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
+        assert {0: 1} == tracer.get_trace().executed_predicates
+        assert {0: 0.0} == tracer.get_trace().true_distances
+        assert {0: 1.0} == tracer.get_trace().false_distances
 
 
 def test_multiple_instrumentations_share_code_object_ids(simple_module):
@@ -464,11 +475,12 @@ def test_multiple_instrumentations_share_code_object_ids(simple_module):
         simple_module.simple_function.__code__
     )
 
-    tracer.current_thread_identifier = threading.current_thread().ident
-    simple_module.simple_function(42)
-    assert {0} == tracer.get_subject_properties().existing_code_objects.keys()
-    assert OrderedSet([0]) == tracer.get_subject_properties().branch_less_code_objects
-    assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
+    with tracer.get_tracing_context():
+        simple_module.simple_function(42)
+
+        assert {0} == tracer.get_subject_properties().existing_code_objects.keys()
+        assert OrderedSet([0]) == tracer.get_subject_properties().branch_less_code_objects
+        assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
 
 
 def test_exception_no_match_integrate():
@@ -483,13 +495,17 @@ def test_exception_no_match_integrate():
     adapter = BranchCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
     func.__code__ = transformer.instrument_module(func.__code__)
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with pytest.raises(RuntimeError):
+
+    with (
+        pytest.raises(RuntimeError),
+        tracer.get_tracing_context()
+    ):
         func()
-    assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
-    assert {0: 1} == tracer.get_trace().executed_predicates
-    assert {0: 1.0} == tracer.get_trace().true_distances
-    assert {0: 0.0} == tracer.get_trace().false_distances
+
+        assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
+        assert {0: 1} == tracer.get_trace().executed_predicates
+        assert {0: 1.0} == tracer.get_trace().true_distances
+        assert {0: 0.0} == tracer.get_trace().false_distances
 
 
 def test_jump_if_true_or_pop():
@@ -503,13 +519,17 @@ def test_jump_if_true_or_pop():
     adapter = BranchCoverageInstrumentation(tracer)
     transformer = InstrumentationTransformer(tracer, [adapter])
     func.__code__ = transformer.instrument_module(func.__code__)
-    tracer.current_thread_identifier = threading.current_thread().ident
-    with contextlib.nullcontext():
+
+    with (
+        contextlib.nullcontext(),
+        tracer.get_tracing_context()
+    ):
         func("123")
-    assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
-    assert {0: 1, 1: 1} == tracer.get_trace().executed_predicates
-    assert {0: 1.0, 1: 1.0} == tracer.get_trace().true_distances
-    assert {0: 0.0, 1: 0.0} == tracer.get_trace().false_distances
+
+        assert OrderedSet([0]) == tracer.get_trace().executed_code_objects
+        assert {0: 1, 1: 1} == tracer.get_trace().executed_predicates
+        assert {0: 1.0, 1: 1.0} == tracer.get_trace().true_distances
+        assert {0: 0.0, 1: 0.0} == tracer.get_trace().false_distances
 
 
 def test_tracking_covered_statements_explicit_return(simple_module):
@@ -520,12 +540,14 @@ def test_tracking_covered_statements_explicit_return(simple_module):
     simple_module.explicit_none_return.__code__ = transformer.instrument_module(
         simple_module.explicit_none_return.__code__
     )
-    tracer.current_thread_identifier = threading.current_thread().ident
-    simple_module.explicit_none_return()
-    assert tracer.get_trace().covered_line_ids
-    assert tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == OrderedSet(
-        [77, 78]
-    )
+
+    with tracer.get_tracing_context():
+        simple_module.explicit_none_return()
+
+        assert tracer.get_trace().covered_line_ids
+        assert tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == OrderedSet(
+            [77, 78]
+        )
 
 
 @pytest.mark.parametrize(
@@ -545,12 +567,14 @@ def test_tracking_covered_statements_cmp_predicate(
     simple_module.cmp_predicate.__code__ = transformer.instrument_module(
         simple_module.cmp_predicate.__code__
     )
-    tracer.current_thread_identifier = threading.current_thread().ident
-    simple_module.cmp_predicate(value1, value2)
-    assert tracer.get_trace().covered_line_ids
-    assert (
-        tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
-    )
+
+    with tracer.get_tracing_context():
+        simple_module.cmp_predicate(value1, value2)
+
+        assert tracer.get_trace().covered_line_ids
+        assert (
+            tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
+        )
 
 
 @pytest.mark.parametrize(
@@ -570,12 +594,14 @@ def test_tracking_covered_statements_bool_predicate(
     simple_module.bool_predicate.__code__ = transformer.instrument_module(
         simple_module.bool_predicate.__code__
     )
-    tracer.current_thread_identifier = threading.current_thread().ident
-    simple_module.bool_predicate(value)
-    assert tracer.get_trace().covered_line_ids
-    assert (
-        tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
-    )
+
+    with tracer.get_tracing_context():
+        simple_module.bool_predicate(value)
+
+        assert tracer.get_trace().covered_line_ids
+        assert (
+            tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
+        )
 
 
 @pytest.mark.parametrize(
@@ -593,12 +619,14 @@ def test_tracking_covered_statements_for_loop(simple_module, number, expected_li
     simple_module.full_for_loop.__code__ = transformer.instrument_module(
         simple_module.full_for_loop.__code__
     )
-    tracer.current_thread_identifier = threading.current_thread().ident
-    simple_module.full_for_loop(number)
-    assert tracer.get_trace().covered_line_ids
-    assert (
-        tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
-    )
+
+    with tracer.get_tracing_context():
+        simple_module.full_for_loop(number)
+
+        assert tracer.get_trace().covered_line_ids
+        assert (
+            tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
+        )
 
 
 @pytest.mark.parametrize(
@@ -616,12 +644,14 @@ def test_tracking_covered_statements_while_loop(simple_module, number, expected_
     simple_module.while_loop.__code__ = transformer.instrument_module(
         simple_module.while_loop.__code__
     )
-    tracer.current_thread_identifier = threading.current_thread().ident
-    simple_module.while_loop(number)
-    assert tracer.get_trace().covered_line_ids
-    assert (
-        tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
-    )
+
+    with tracer.get_tracing_context():
+        simple_module.while_loop(number)
+
+        assert tracer.get_trace().covered_line_ids
+        assert (
+            tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
+        )
 
 
 @pytest.mark.parametrize(
@@ -647,11 +677,13 @@ def test_expected_covered_lines(func, arg, expected_lines, artificial_none_modul
     transformer = InstrumentationTransformer(tracer, [adapter])
     func_object = getattr(artificial_none_module, func)
     func_object.__code__ = transformer.instrument_module(func_object.__code__)
-    tracer.current_thread_identifier = threading.current_thread().ident
-    func_object(arg)
-    assert (
-        tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
-    )
+
+    with tracer.get_tracing_context():
+        func_object(arg)
+
+        assert (
+            tracer.lineids_to_linenos(tracer.get_trace().covered_line_ids) == expected_lines
+        )
 
 
 @pytest.fixture()

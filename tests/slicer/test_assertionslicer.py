@@ -6,7 +6,6 @@
 #
 import ast
 import importlib
-import threading
 
 import pytest
 
@@ -269,9 +268,11 @@ def test_assertion_detection_on_test_case(
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -311,9 +312,11 @@ def test_slicing_after_test_execution(
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -375,9 +378,11 @@ def test_testsuite_assertion_checked_coverage_calculation(
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 

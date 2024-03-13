@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypeVar
 from typing import cast
+from typing import Generator
+from typing import ContextManager
 
 # Needs to be loaded, i.e., in sys.modules for the execution of assertions to work.
 import pytest  # noqa: F401
@@ -1027,17 +1029,6 @@ class ExecutionTracer:  # noqa: PLR0904
         """
         return self._current_thread_identifier
 
-    @current_thread_identifier.setter
-    def current_thread_identifier(self, current: int) -> None:
-        """Set the current thread identifier.
-
-        Tracing calls from any other thread are ignored.
-
-        Args:
-            current: the current thread
-        """
-        self._current_thread_identifier = current
-
     @property
     def import_trace(self) -> ExecutionTrace:
         """The trace that was generated when the SUT was imported.
@@ -1082,6 +1073,18 @@ class ExecutionTracer:  # noqa: PLR0904
         new_trace.merge(self._import_trace)
         self._thread_local_state.trace = new_trace
 
+    @contextlib.contextmanager
+    def get_tracing_context(self) -> Generator[None, None, None]:
+        self._current_thread_identifier = threading.current_thread().ident
+        try:
+            yield None
+        finally:
+            self.kill_tracing_context()
+
+    def kill_tracing_context(self) -> None:
+        """Kill the tracing context."""
+        self._current_thread_identifier = None
+
     def is_disabled(self) -> bool:
         """Should we track anything?
 
@@ -1124,6 +1127,17 @@ class ExecutionTracer:  # noqa: PLR0904
         self.subject_properties.branch_less_code_objects.add(code_object_id)
         return code_object_id
 
+    def check_should_run(self):
+        """Check if we should run.
+
+        Raises:
+            RuntimeError: raised when called from another thread
+        """
+        if threading.current_thread().ident != self._current_thread_identifier:
+            raise RuntimeError(
+                "The current thread shall not be executed any more, thus I kill it."
+            )
+
     def executed_code_object(self, code_object_id: int) -> None:
         """Mark a code object as executed.
 
@@ -1136,10 +1150,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         assert (
             code_object_id in self.subject_properties.existing_code_objects
@@ -1176,10 +1187,7 @@ class ExecutionTracer:  # noqa: PLR0904
             RuntimeError: raised when called from another thread.
             AssertionError: when encountering an unknown compare op.
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1257,10 +1265,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1307,10 +1312,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1343,10 +1345,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1421,10 +1420,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1467,10 +1463,7 @@ class ExecutionTracer:  # noqa: PLR0904
             ValueError: when no argument is given
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1543,10 +1536,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1604,10 +1594,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1645,10 +1632,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1684,10 +1668,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1711,10 +1692,7 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
@@ -1747,15 +1725,12 @@ class ExecutionTracer:  # noqa: PLR0904
         Raises:
             RuntimeError: raised when called from another thread
         """
-        if threading.current_thread().ident != self._current_thread_identifier:
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self.check_should_run()
 
         if self.is_disabled():
             return
 
-        exec_instr = self.get_trace().executed_instructions
+        exec_instr = self._thread_local_state.trace.executed_instructions
         pop_jump_if_true_position = len(exec_instr) - 1
         for instr in reversed(exec_instr):
             if instr.opcode == op.POP_JUMP_IF_TRUE:
@@ -2238,9 +2213,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
                 )
             )
             if thread.is_alive():
-                # Set thread ident to invalid value, such that the tracer
-                # kills the thread
-                self._tracer.current_thread_identifier = -1
+                self._tracer.kill_tracing_context()
                 result = ExecutionResult(timeout=True)
                 _LOGGER.warning("Experienced timeout from test-case execution")
             else:
@@ -2261,14 +2234,14 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
         self._before_test_case_execution(test_case)
         result = ExecutionResult()
         exec_ctx = ExecutionContext(self._module_provider)
-        self._tracer.current_thread_identifier = threading.current_thread().ident
-        for idx, statement in enumerate(test_case.statements):
-            ast_node = self._before_statement_execution(statement, exec_ctx)
-            exception = self.execute_ast(ast_node, exec_ctx)
-            self._after_statement_execution(statement, exec_ctx, exception)
-            if exception is not None:
-                result.report_new_thrown_exception(idx, exception)
-                break
+        with self._tracer.get_tracing_context():
+            for idx, statement in enumerate(test_case.statements):
+                ast_node = self._before_statement_execution(statement, exec_ctx)
+                exception = self.execute_ast(ast_node, exec_ctx)
+                self._after_statement_execution(statement, exec_ctx, exception)
+                if exception is not None:
+                    result.report_new_thrown_exception(idx, exception)
+                    break
         self._after_test_case_execution_inside_thread(test_case, result)
         result_queue.put(result)
 
@@ -2302,11 +2275,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
     ) -> ast.Module:
         # Check if the current thread is still the one that should be executing
         # Otherwise raise an exception to kill it.
-        if self.tracer.current_thread_identifier != threading.current_thread().ident:
-            # Kill this thread
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self._tracer.check_should_run()
 
         # We need to disable the tracer, because an observer might interact with an
         # object of the SUT via the ExecutionContext and trigger code execution, which
@@ -2364,11 +2333,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
         exception: BaseException | None,
     ):
         # See comments in _before_statement_execution
-        if self.tracer.current_thread_identifier != threading.current_thread().ident:
-            # Kill this thread
-            raise RuntimeError(
-                "The current thread shall not be executed any more, thus I kill it."
-            )
+        self._tracer.check_should_run()
 
         self._tracer.disable()
         try:

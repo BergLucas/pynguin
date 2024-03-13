@@ -7,7 +7,6 @@
 import ast
 import importlib
 import inspect
-import threading
 
 from unittest.mock import MagicMock
 
@@ -60,9 +59,11 @@ def test_testsuite_statement_checked_coverage_calculation(plus_three_test):
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -81,9 +82,11 @@ def test_testcase_statement_checked_coverage_calculation(plus_three_test):
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -145,9 +148,11 @@ def test_only_void_function(setter_test):
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -211,9 +216,11 @@ def test_getter_before_setter(getter_setter_test):
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
@@ -293,9 +300,11 @@ def test_getter_after_setter(setter_getter_test):
     ]
 
     tracer = ExecutionTracer()
-    tracer.current_thread_identifier = threading.current_thread().ident
 
-    with install_import_hook(module_name, tracer):
+    with (
+        tracer.get_tracing_context(),
+        install_import_hook(module_name, tracer)
+    ):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 

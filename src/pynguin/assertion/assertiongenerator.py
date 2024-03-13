@@ -10,7 +10,6 @@ from __future__ import annotations
 import ast
 import dataclasses
 import logging
-import threading
 import types
 
 from typing import TYPE_CHECKING
@@ -23,6 +22,7 @@ import pynguin.assertion.assertiontraceobserver as ato
 import pynguin.assertion.mutation_analysis.mutationadapter as ma
 import pynguin.configuration as config
 import pynguin.ga.chromosomevisitor as cv
+from pynguin.ga.testcasechromosome import TestCaseChromosome
 import pynguin.testcase.execution as ex
 import pynguin.utils.statistics.statistics as stat
 
@@ -261,9 +261,6 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
 
         # We use a separate tracer and executor to execute tests on the mutants.
         self._mutation_tracer = ex.ExecutionTracer()
-        self._mutation_tracer.current_thread_identifier = (
-            threading.current_thread().ident
-        )
         self._mutation_executor = ex.TestCaseExecutor(self._mutation_tracer)
         self._mutation_executor.add_observer(ato.AssertionVerificationObserver())
 
@@ -280,7 +277,17 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
 
         # Evil hack to change the way mutpy creates mutated modules.
         mutpy.utils.create_module = self._create_module_with_instrumentation
-        self._mutated_modules = [x for x, _ in adapter.mutate_module()]
+
+        with self._mutation_tracer.get_tracing_context():
+            self._mutated_modules = [x for x, _ in adapter.mutate_module()]
+
+    def visit_test_case_chromosome(self, chromosome: TestCaseChromosome) -> None:
+        with self._mutation_tracer.get_tracing_context():
+            return super().visit_test_case_chromosome(chromosome)
+
+    def visit_test_suite_chromosome(self, chromosome: tsc.TestSuiteChromosome) -> None:
+        with self._mutation_tracer.get_tracing_context():
+            return super().visit_test_suite_chromosome(chromosome)
 
     def _add_assertions(self, test_cases: list[tc.TestCase]):
         super()._add_assertions(test_cases)

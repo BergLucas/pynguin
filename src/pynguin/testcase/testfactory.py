@@ -1110,7 +1110,7 @@ class TestFactory:
     ) -> vr.VariableReference | None:
         if (
             parameter_type.accept(accept_csv_file_like_object)
-            and randomness.next_float() < 0.25
+            and randomness.next_float() < config.configuration.test_creation.csv_weight
         ):
             return self._create_csv_file_like_object(
                 test_case,

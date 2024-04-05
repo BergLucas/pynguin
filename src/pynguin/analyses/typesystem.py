@@ -592,7 +592,7 @@ class _CsvFileLikeVisitor(TypeVisitor[bool]):
         return False
 
     def visit_instance(self, left: Instance) -> bool:
-        return isinstance(left.type.raw_type, io.TextIOBase)
+        return issubclass(left.type.raw_type, io.TextIOBase)
 
     def visit_tuple_type(self, left: TupleType) -> bool:
         return False

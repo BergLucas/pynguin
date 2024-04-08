@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from pynguin.testcase.statement import FloatPrimitiveStatement
     from pynguin.testcase.statement import FunctionStatement
     from pynguin.testcase.statement import IntPrimitiveStatement
+    from pynguin.testcase.statement import IntTensorStatement
     from pynguin.testcase.statement import ListStatement
     from pynguin.testcase.statement import MethodStatement
     from pynguin.testcase.statement import NoneStatement
@@ -47,7 +48,7 @@ if TYPE_CHECKING:
     from pynguin.testcase.statement import TupleStatement
 
 
-class StatementToAstVisitor(StatementVisitor):
+class StatementToAstVisitor(StatementVisitor):  # noqa: PLR0904
     """Visitor that transforms statements into a list of AST nodes."""
 
     def __init__(
@@ -270,6 +271,42 @@ class StatementToAstVisitor(StatementVisitor):
             value=au.create_full_name(
                 self._variable_names, self._module_aliases, stmt.rhs, load=True
             ),
+        )
+
+    def _walk_tensor(
+        self, tensor: list[int], shape: tuple[int, ...], index: int, length: int
+    ) -> ast.List:
+        first_dim = shape[0]
+        other_dims = shape[1:]
+
+        elts: list[ast.Constant] | list[ast.List]
+        if other_dims:
+            split_length = length // first_dim
+            elts = [
+                self._walk_tensor(
+                    tensor, other_dims, index + i * split_length, split_length
+                )
+                for i in range(first_dim)
+            ]
+        else:
+            assert first_dim == length
+            elts = [ast.Constant(value=tensor[index + i]) for i in range(first_dim)]
+
+        return ast.List(
+            elts=elts,
+            ctx=ast.Load(),
+        )
+
+    def visit_int_tensor_statement(  # noqa: D102
+        self, stmt: IntTensorStatement
+    ) -> None:
+        self._ast_node = ast.Assign(
+            targets=[
+                au.create_full_name(
+                    self._variable_names, self._module_aliases, stmt.ret_val, load=False
+                )
+            ],
+            value=self._walk_tensor(stmt.tensor, stmt.shape, 0, len(stmt.tensor)),
         )
 
     def visit_list_statement(self, stmt: ListStatement) -> None:  # noqa: D102

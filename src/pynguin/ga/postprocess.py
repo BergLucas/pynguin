@@ -179,7 +179,7 @@ class UnusedStatementsTestCaseVisitor(ModificationAwareTestCaseVisitor):
         )
 
 
-class UnusedPrimitiveOrCollectionStatementVisitor(StatementVisitor):
+class UnusedPrimitiveOrCollectionStatementVisitor(StatementVisitor):  # noqa: PLR0904
     """Visits all statements and removes the unused primitives and collections.
 
     Has to visit the statements in reverse order.
@@ -251,6 +251,9 @@ class UnusedPrimitiveOrCollectionStatementVisitor(StatementVisitor):
 
     def visit_assignment_statement(self, stmt) -> None:  # noqa: D102
         raise NotImplementedError("No field support yet.")
+
+    def visit_int_tensor_statement(self, stmt) -> None:  # noqa: D102
+        self._handle_collection_or_primitive(stmt)
 
     def visit_list_statement(self, stmt) -> None:  # noqa: D102
         self._handle_collection_or_primitive(stmt)

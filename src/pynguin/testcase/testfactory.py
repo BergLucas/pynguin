@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 
 from typing import TYPE_CHECKING
 from typing import cast
@@ -27,6 +28,7 @@ from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
+from pynguin.analyses.typesystem import is_tensor_like
 from pynguin.utils import randomness
 from pynguin.utils.exceptions import ConstructionFailedException
 from pynguin.utils.type_utils import is_optional_parameter
@@ -1103,6 +1105,15 @@ class TestFactory:
         *,
         allow_none: bool,
     ) -> vr.VariableReference | None:
+        if (
+            parameter_type.accept(is_tensor_like)
+            and config.configuration.test_creation.tensor_weight
+            >= randomness.next_float()
+        ):
+            return self._create_tensor(
+                test_case, parameter_type, position, recursion_depth
+            )
+
         # We only select a concrete type e.g. from a union, when we are forced to
         # choose one.
         parameter_type = self._test_cluster.select_concrete_type(parameter_type)
@@ -1321,6 +1332,21 @@ class TestFactory:
         ret = test_case.add_variable_creating_statement(
             stmt.DictStatement(test_case, parameter_type, elements), position
         )
+        ret.distance = recursion_depth
+        return ret
+
+    def _create_tensor(
+        self,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        nb_dims = randomness.next_int(1, 4)
+        shape = tuple(randomness.next_int(1, 11) for _ in range(nb_dims))
+        tensor = [randomness.next_int() for _ in range(math.prod(shape))]
+        statement = stmt.IntTensorStatement(test_case, parameter_type, tensor, shape)
+        ret = test_case.add_variable_creating_statement(statement, position)
         ret.distance = recursion_depth
         return ret
 

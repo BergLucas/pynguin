@@ -446,6 +446,11 @@ class TestSuiteGenerationAlgorithmFactory(
     def _get_test_factory(
         strategy: GenerationAlgorithm, constant_provider: ConstantProvider
     ):
+        variable_manager = tf.VariableManager(
+            {
+                tf.BuiltInVariableGenerator(): 1,
+            }
+        )
         return tf.TestFactory(
-            strategy.test_cluster, constant_provider=constant_provider
+            variable_manager, strategy.test_cluster, constant_provider=constant_provider
         )

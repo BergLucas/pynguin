@@ -32,8 +32,8 @@ from tests.fixtures.examples.monkey import Monkey
 from tests.testutils import feed_typesystem
 
 
-def test_append_statement_unknown_type(test_case_mock):
-    factory = tf.TestFactory(MagicMock(ModuleTestCluster))
+def test_append_statement_unknown_type(test_case_mock, default_variable_manager):
+    factory = tf.TestFactory(default_variable_manager, MagicMock(ModuleTestCluster))
     with pytest.raises(ConstructionFailedException):
         factory.append_statement(test_case_mock, MagicMock(Monkey))
 
@@ -47,11 +47,12 @@ def test_append_statement_unknown_type(test_case_mock):
         "add_field",
     ],
 )
-def test_check_recursion_depth_guard(test_case_mock, method):
+def test_check_recursion_depth_guard(test_case_mock, method, default_variable_manager):
     with pytest.raises(ConstructionFailedException):
-        getattr(tf.TestFactory(MagicMock(ModuleTestCluster)), method)(
-            test_case_mock, MagicMock(stmt.Statement), recursion_depth=11
-        )
+        getattr(
+            tf.TestFactory(default_variable_manager, MagicMock(ModuleTestCluster)),
+            method,
+        )(test_case_mock, MagicMock(stmt.Statement), recursion_depth=11)
 
 
 @pytest.mark.parametrize(
@@ -64,14 +65,14 @@ def test_check_recursion_depth_guard(test_case_mock, method):
         (MagicMock(stmt.PrimitiveStatement)),
     ],
 )
-def test_append_statement(test_case_mock, statement):
+def test_append_statement(test_case_mock, statement, default_variable_manager):
     called = False
 
     def mock_method(_t, _s, position=0, allow_none=True):  # noqa: ARG001, FBT002
         nonlocal called
         called = True
 
-    factory = tf.TestFactory(MagicMock(ModuleTestCluster))
+    factory = tf.TestFactory(MagicMock(ModuleTestCluster), default_variable_manager)
     factory.add_constructor = mock_method
     factory.add_method = mock_method
     factory.add_function = mock_method
@@ -90,7 +91,7 @@ def test_append_statement(test_case_mock, statement):
         (MagicMock(gao.GenericField)),
     ],
 )
-def test_append_generic_statement(test_case_mock, statement):
+def test_append_generic_statement(test_case_mock, statement, default_variable_manager):
     called = False
 
     def mock_method(
@@ -99,7 +100,7 @@ def test_append_generic_statement(test_case_mock, statement):
         nonlocal called
         called = True
 
-    factory = tf.TestFactory(MagicMock(ModuleTestCluster))
+    factory = tf.TestFactory(default_variable_manager, MagicMock(ModuleTestCluster))
     factory.add_constructor = mock_method
     factory.add_method = mock_method
     factory.add_function = mock_method
@@ -110,24 +111,26 @@ def test_append_generic_statement(test_case_mock, statement):
     assert called
 
 
-def test_append_illegal_generic_statement(test_case_mock):
-    factory = tf.TestFactory(MagicMock(ModuleTestCluster))
+def test_append_illegal_generic_statement(test_case_mock, default_variable_manager):
+    factory = tf.TestFactory(default_variable_manager, MagicMock(ModuleTestCluster))
     with pytest.raises(ConstructionFailedException):
         factory.append_generic_accessible(
             test_case_mock, MagicMock(stmt.PrimitiveStatement), position=42
         )
 
 
-def test_add_primitive(test_case_mock):
+def test_add_primitive(test_case_mock, default_variable_manager):
     statement = MagicMock(stmt.PrimitiveStatement)
     statement.clone.return_value = statement
-    factory = tf.TestFactory(MagicMock(ModuleTestCluster))
+    factory = tf.TestFactory(default_variable_manager, MagicMock(ModuleTestCluster))
     factory.add_primitive(test_case_mock, statement)
     statement.clone.assert_called_once()
     test_case_mock.add_variable_creating_statement.assert_called_once()
 
 
-def test_add_constructor(provide_callables_from_fixtures_modules, default_test_case):
+def test_add_constructor(
+    provide_callables_from_fixtures_modules, default_test_case, default_variable_manager
+):
     generic_constructor = gao.GenericConstructor(
         owner=default_test_case.test_cluster.type_system.to_type_info(
             provide_callables_from_fixtures_modules["Basket"]
@@ -149,7 +152,7 @@ def test_add_constructor(provide_callables_from_fixtures_modules, default_test_c
             type_system=default_test_case.test_cluster.type_system,
         ),
     )
-    factory = tf.TestFactory(default_test_case.test_cluster)
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     result = factory.add_constructor(default_test_case, generic_constructor, position=0)
     assert result.type == default_test_case.test_cluster.type_system.convert_type_hint(
         provide_callables_from_fixtures_modules["Basket"]
@@ -157,7 +160,9 @@ def test_add_constructor(provide_callables_from_fixtures_modules, default_test_c
     assert default_test_case.size() == 2
 
 
-def test_add_method(provide_callables_from_fixtures_modules, default_test_case):
+def test_add_method(
+    provide_callables_from_fixtures_modules, default_test_case, default_variable_manager
+):
     object_ = Monkey("foo")
     methods = inspect.getmembers(object_, inspect.ismethod)
     # fmt: off
@@ -188,7 +193,7 @@ def test_add_method(provide_callables_from_fixtures_modules, default_test_case):
         ),
     )
     # fmt: on
-    factory = tf.TestFactory(default_test_case.test_cluster)
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     config.configuration.test_creation.none_probability = 1.0
     result = factory.add_method(
         default_test_case, generic_method, position=0, callee=MagicMock()
@@ -199,7 +204,9 @@ def test_add_method(provide_callables_from_fixtures_modules, default_test_case):
     assert default_test_case.size() == 2
 
 
-def test_add_function(provide_callables_from_fixtures_modules, default_test_case):
+def test_add_function(
+    provide_callables_from_fixtures_modules, default_test_case, default_variable_manager
+):
     config.configuration.test_creation.object_reuse_probability = 0.0
     generic_function = gao.GenericFunction(
         function=default_test_case.test_cluster.type_system.to_type_info(
@@ -230,19 +237,19 @@ def test_add_function(provide_callables_from_fixtures_modules, default_test_case
             type_system=default_test_case.test_cluster.type_system,
         ),
     )
-    factory = tf.TestFactory(default_test_case.test_cluster)
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     result = factory.add_function(default_test_case, generic_function, position=0)
     assert isinstance(result.type, AnyType)
     assert default_test_case.size() <= 4
 
 
-def test_add_enum(default_test_case):
+def test_add_enum(default_test_case, default_variable_manager):
     enum_ = enum.Enum("Foo", "BAR")
     generic_enum = gao.GenericEnum(
         default_test_case.test_cluster.type_system.to_type_info(enum_)
     )
     cluster = MagicMock(ModuleTestCluster)
-    factory = tf.TestFactory(cluster)
+    factory = tf.TestFactory(default_variable_manager, cluster)
     result = factory.add_enum(default_test_case, generic_enum)
     assert default_test_case.statements[0].value_name == "BAR"
     assert result.type == default_test_case.test_cluster.type_system.convert_type_hint(
@@ -260,12 +267,13 @@ def test_add_enum(default_test_case):
         str,
     ],
 )
-def test_create_primitive(type_, default_test_case):
+def test_create_primitive(type_, default_test_case, default_variable_manager):
     default_test_case.test_cluster.type_system.enable_numeric_tower()
     proper = default_test_case.test_cluster.type_system.convert_type_hint(type_)
-    factory = tf.TestFactory(default_test_case.test_cluster)
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     provider = EmptyConstantProvider()
-    result = factory._create_primitive(
+    result = tf.BuiltInVariableGenerator._create_primitive(
+        factory,
         default_test_case,
         proper,
         position=0,
@@ -275,10 +283,13 @@ def test_create_primitive(type_, default_test_case):
     assert default_test_case.test_cluster.type_system.is_subtype(result.type, proper)
 
 
-def test_attempt_generation_for_unknown_type(default_test_case):
+def test_attempt_generation_for_unknown_type(
+    default_test_case, default_variable_manager
+):
     default_test_case.test_cluster.type_system.enable_numeric_tower()
-    factory = tf.TestFactory(default_test_case.test_cluster)
-    result = factory._attempt_generation(
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
+    result = default_variable_manager.attempt_generation(
+        factory,
         test_case=default_test_case,
         parameter_type=default_test_case.test_cluster.type_system.convert_type_hint(
             MagicMock
@@ -290,9 +301,10 @@ def test_attempt_generation_for_unknown_type(default_test_case):
     assert result is None
 
 
-def test_attempt_generation_for_none_type(default_test_case):
-    factory = tf.TestFactory(default_test_case.test_cluster)
-    result = factory._attempt_generation(
+def test_attempt_generation_for_none_type(default_test_case, default_variable_manager):
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
+    result = default_variable_manager.attempt_generation(
+        factory,
         test_case=default_test_case,
         parameter_type=NoneType(),
         position=0,
@@ -302,10 +314,13 @@ def test_attempt_generation_for_none_type(default_test_case):
     assert result.distance == 0
 
 
-def test_attempt_generation_for_int_with_no_probability(default_test_case):
+def test_attempt_generation_for_int_with_no_probability(
+    default_test_case, default_variable_manager
+):
     config.configuration.test_creation.none_probability = 0.0
-    factory = tf.TestFactory(default_test_case.test_cluster)
-    result = factory._attempt_generation(
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
+    result = default_variable_manager.attempt_generation(
+        factory,
         test_case=default_test_case,
         parameter_type=default_test_case.test_cluster.type_system.convert_type_hint(
             MagicMock
@@ -317,7 +332,9 @@ def test_attempt_generation_for_int_with_no_probability(default_test_case):
     assert result is None
 
 
-def test_attempt_generation_for_type_from_cluster(default_test_case):
+def test_attempt_generation_for_type_from_cluster(
+    default_test_case, default_variable_manager
+):
     def mock_method(_, position, recursion_depth, allow_none, type_generators):
         assert position == 0  # pragma: no cover
         assert recursion_depth == 0  # pragma: no cover
@@ -329,9 +346,10 @@ def test_attempt_generation_for_type_from_cluster(default_test_case):
     default_test_case.test_cluster.get_generators_for = lambda _: MagicMock(
         gao.GenericAccessibleObject
     )  # pragma: no cover
-    factory = tf.TestFactory(default_test_case.test_cluster)
+    factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     factory._attempt_generation_for_type = mock_method
-    factory._attempt_generation(
+    default_variable_manager.attempt_generation(
+        factory,
         test_case=default_test_case,
         parameter_type=NoneType(),
         position=0,
@@ -381,8 +399,8 @@ def test__rollback_changes_nothing_to_rollback(default_test_case):
     assert cloned == default_test_case
 
 
-def test__dependencies_satisfied_no_dependencies():
-    factory = tf.TestFactory(ModuleTestCluster(0))
+def test__dependencies_satisfied_no_dependencies(default_variable_manager):
+    factory = tf.TestFactory(default_variable_manager, ModuleTestCluster(0))
     assert factory._dependencies_satisfied(OrderedSet(), [])
 
 
@@ -395,8 +413,10 @@ def test__dependencies_satisfied_no_dependencies():
         ([], [int], False),
     ],
 )
-def test__dependencies_satisfied(default_test_case, exist, req, result):
-    factory = tf.TestFactory(ModuleTestCluster(0))
+def test__dependencies_satisfied(
+    default_test_case, exist, req, result, default_variable_manager
+):
+    factory = tf.TestFactory(default_variable_manager, ModuleTestCluster(0))
     objects = [
         vr.VariableReference(
             default_test_case,
@@ -418,21 +438,23 @@ def test__dependencies_satisfied(default_test_case, exist, req, result):
     )
 
 
-def test__get_possible_calls_no_calls(type_system):
+def test__get_possible_calls_no_calls(type_system, default_variable_manager):
     cluster = MagicMock(ModuleTestCluster)
     cluster.get_generators_for.return_value = OrderedSet(), False
     assert (
-        tf.TestFactory(cluster)._get_possible_calls(
+        tf.TestFactory(default_variable_manager, cluster)._get_possible_calls(
             type_system.convert_type_hint(int), [], {}
         )
         == []
     )
 
 
-def test__get_possible_calls_single_call(default_test_case, function_mock):
+def test__get_possible_calls_single_call(
+    default_test_case, function_mock, default_variable_manager
+):
     cluster = default_test_case.test_cluster
     cluster.get_generators_for = lambda _: ({function_mock}, False)
-    assert tf.TestFactory(cluster)._get_possible_calls(
+    assert tf.TestFactory(default_variable_manager, cluster)._get_possible_calls(
         cluster.type_system.convert_type_hint(float),
         [
             vr.VariableReference(
@@ -443,11 +465,13 @@ def test__get_possible_calls_single_call(default_test_case, function_mock):
     ) == [function_mock]
 
 
-def test__get_possible_calls_no_match(default_test_case, function_mock):
+def test__get_possible_calls_no_match(
+    default_test_case, function_mock, default_variable_manager
+):
     cluster = default_test_case.test_cluster
     cluster.get_generators_for = lambda _: ({function_mock}, False)
     assert (
-        tf.TestFactory(cluster)._get_possible_calls(
+        tf.TestFactory(default_variable_manager, cluster)._get_possible_calls(
             cluster.type_system.convert_type_hint(float),
             [
                 vr.VariableReference(
@@ -547,10 +571,12 @@ def test_get_reuse_parameters(default_test_case):
             ) == {"test0": float0.ret_val}
 
 
-def test_insert_random_statement_empty_call(default_test_case):
+def test_insert_random_statement_empty_call(
+    default_test_case, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 1
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch("pynguin.utils.randomness.next_float") as float_mock:
         float_mock.return_value = 0.0
         with mock.patch.object(test_factory, "insert_random_call") as ins_mock:
@@ -564,10 +590,12 @@ def test_insert_random_statement_empty_call(default_test_case):
             ins_mock.assert_called_with(default_test_case, 0)
 
 
-def test_insert_random_statement_empty_on_object(default_test_case):
+def test_insert_random_statement_empty_on_object(
+    default_test_case, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 1
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch("pynguin.utils.randomness.next_float") as float_mock:
         float_mock.return_value = 1.0
         with mock.patch.object(
@@ -583,13 +611,13 @@ def test_insert_random_statement_empty_on_object(default_test_case):
             ins_mock.assert_called_with(default_test_case, 0)
 
 
-def test_insert_random_statement_non_empty(default_test_case):
+def test_insert_random_statement_non_empty(default_test_case, default_variable_manager):
     default_test_case.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
     default_test_case.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
     default_test_case.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 1
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch("pynguin.utils.randomness.next_float") as float_mock:
         float_mock.return_value = 0.0
         with mock.patch.object(test_factory, "insert_random_call") as ins_mock:
@@ -602,7 +630,9 @@ def test_insert_random_statement_non_empty(default_test_case):
             )
 
 
-def test_insert_random_statement_non_empty_multi_insert(default_test_case):
+def test_insert_random_statement_non_empty_multi_insert(
+    default_test_case, default_variable_manager
+):
     def side_effect(tc, pos):  # noqa: ARG001
         tc.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
         tc.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
@@ -613,7 +643,7 @@ def test_insert_random_statement_non_empty_multi_insert(default_test_case):
     default_test_case.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 1
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch("pynguin.utils.randomness.next_float") as float_mock:
         float_mock.return_value = 0.0
         with mock.patch.object(test_factory, "insert_random_call") as ins_mock:
@@ -626,11 +656,13 @@ def test_insert_random_statement_non_empty_multi_insert(default_test_case):
             )
 
 
-def test_insert_random_statement_no_success(default_test_case):
+def test_insert_random_statement_no_success(
+    default_test_case, default_variable_manager
+):
     default_test_case.add_statement(stmt.IntPrimitiveStatement(default_test_case, 5))
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 1
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch("pynguin.utils.randomness.next_float") as float_mock:
         float_mock.return_value = 0.0
         with mock.patch.object(test_factory, "insert_random_call") as ins_mock:
@@ -646,10 +678,12 @@ def test_insert_random_statement_no_success(default_test_case):
             )
 
 
-def test_insert_random_call_on_object_no_success(default_test_case):
+def test_insert_random_call_on_object_no_success(
+    default_test_case, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 0
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(
         test_factory, "_select_random_variable_for_call"
     ) as select_mock:
@@ -659,10 +693,10 @@ def test_insert_random_call_on_object_no_success(default_test_case):
 
 
 def test_insert_random_call_on_object_success(
-    variable_reference_mock, default_test_case
+    variable_reference_mock, default_test_case, default_variable_manager
 ):
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(
         test_factory, "_select_random_variable_for_call"
     ) as select_mock:
@@ -678,10 +712,12 @@ def test_insert_random_call_on_object_success(
             )
 
 
-def test_insert_random_call_on_object_retry(variable_reference_mock, default_test_case):
+def test_insert_random_call_on_object_retry(
+    variable_reference_mock, default_test_case, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.num_accessible_objects_under_test.return_value = 1
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(
         test_factory, "_select_random_variable_for_call"
     ) as select_mock:
@@ -705,11 +741,11 @@ def test_insert_random_call_on_object_retry(variable_reference_mock, default_tes
 
 
 def test_insert_random_call_on_object_at_no_accessible(
-    test_case_mock, variable_reference_mock
+    test_case_mock, variable_reference_mock, default_variable_manager
 ):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_random_call_for.side_effect = ConstructionFailedException()
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     variable_reference_mock.type = float
     assert not test_factory.insert_random_call_on_object_at(
         test_case_mock, variable_reference_mock, 0
@@ -718,10 +754,10 @@ def test_insert_random_call_on_object_at_no_accessible(
 
 @pytest.mark.parametrize("result", [True, False])
 def test_insert_random_call_on_object_at_success(
-    test_case_mock, variable_reference_mock, result
+    test_case_mock, variable_reference_mock, result, default_variable_manager
 ):
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     variable_reference_mock.type = float
     with mock.patch.object(test_factory, "add_call_for") as call_mock:
         call_mock.return_value = result
@@ -733,9 +769,11 @@ def test_insert_random_call_on_object_at_success(
         )
 
 
-def test_add_call_for_field(field_mock, variable_reference_mock, test_case_mock):
+def test_add_call_for_field(
+    field_mock, variable_reference_mock, test_case_mock, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(test_factory, "add_field") as add_field:
         assert test_factory.add_call_for(
             test_case_mock, variable_reference_mock, field_mock, position=0
@@ -745,9 +783,11 @@ def test_add_call_for_field(field_mock, variable_reference_mock, test_case_mock)
         )
 
 
-def test_add_call_for_method(method_mock, variable_reference_mock, test_case_mock):
+def test_add_call_for_method(
+    method_mock, variable_reference_mock, test_case_mock, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(test_factory, "add_method") as add_field:
         assert test_factory.add_call_for(
             test_case_mock, variable_reference_mock, method_mock, position=0
@@ -757,7 +797,9 @@ def test_add_call_for_method(method_mock, variable_reference_mock, test_case_moc
         )
 
 
-def test_add_call_for_rollback(method_mock, variable_reference_mock, default_test_case):
+def test_add_call_for_rollback(
+    method_mock, variable_reference_mock, default_test_case, default_variable_manager
+):
     def side_effect(tc, f, position, callee=None):  # noqa: ARG001
         tc.add_statement(stmt.IntPrimitiveStatement(tc, value=5), position=position)
         tc.add_statement(stmt.IntPrimitiveStatement(tc, value=5), position=position)
@@ -767,7 +809,7 @@ def test_add_call_for_rollback(method_mock, variable_reference_mock, default_tes
     int0 = stmt.IntPrimitiveStatement(default_test_case, 3)
     default_test_case.add_statement(int0)
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(test_factory, "add_method") as add_field:
         add_field.side_effect = side_effect
         assert not test_factory.add_call_for(
@@ -776,9 +818,11 @@ def test_add_call_for_rollback(method_mock, variable_reference_mock, default_tes
         assert default_test_case.statements == [int0]
 
 
-def test_add_call_for_unknown(variable_reference_mock, test_case_mock):
+def test_add_call_for_unknown(
+    variable_reference_mock, test_case_mock, default_variable_manager
+):
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     unknown = MagicMock(gao.GenericAccessibleObject)
     unknown.is_method.return_value = False
     unknown.is_field.return_value = False
@@ -826,24 +870,24 @@ def test_select_random_variable_for_call_none(function_mock, default_test_case):
     )
 
 
-def test_insert_random_call_no_accessible(test_case_mock):
+def test_insert_random_call_no_accessible(test_case_mock, default_variable_manager):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_random_accessible.return_value = None
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     assert not test_factory.insert_random_call(test_case_mock, 0)
 
 
-def test_insert_random_call_success(test_case_mock):
+def test_insert_random_call_success(test_case_mock, default_variable_manager):
     test_cluster = MagicMock(ModuleTestCluster)
     acc = MagicMock(gao.GenericAccessibleObject)
     test_cluster.get_random_accessible.return_value = acc
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(test_factory, "append_generic_accessible") as append_mock:
         assert test_factory.insert_random_call(test_case_mock, position=0)
         append_mock.assert_called_with(test_case_mock, acc, position=0)
 
 
-def test_insert_random_call_rollback(default_test_case):
+def test_insert_random_call_rollback(default_test_case, default_variable_manager):
     def side_effect(tc, f, position, callee=None):  # noqa: ARG001
         tc.add_statement(stmt.IntPrimitiveStatement(tc, 5), position=position)
         tc.add_statement(stmt.IntPrimitiveStatement(tc, 5), position=position)
@@ -853,7 +897,7 @@ def test_insert_random_call_rollback(default_test_case):
     int0 = stmt.IntPrimitiveStatement(default_test_case, 3)
     default_test_case.add_statement(int0)
     test_cluster = MagicMock(ModuleTestCluster)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(
         test_factory, "append_generic_accessible"
     ) as append_generic_mock:
@@ -898,16 +942,18 @@ def test_delete_statement_gracefully_no_dependencies(default_test_case):
     assert default_test_case.statements == [float_prim0, float_prim2]
 
 
-def test_change_random_call_unknown_type(default_test_case):
+def test_change_random_call_unknown_type(default_test_case, default_variable_manager):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_generators_for.return_value = [], False
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     none_statement = stmt.NoneStatement(default_test_case)
     default_test_case.add_statement(none_statement)
     assert not test_factory.change_random_call(default_test_case, none_statement)
 
 
-def test_change_random_call_no_calls(function_mock, default_test_case):
+def test_change_random_call_no_calls(
+    function_mock, default_test_case, default_variable_manager
+):
     float_prim = stmt.FloatPrimitiveStatement(default_test_case, 5.0)
     float_function1 = stmt.FunctionStatement(
         default_test_case, function_mock, {"z": float_prim.ret_val}
@@ -917,22 +963,28 @@ def test_change_random_call_no_calls(function_mock, default_test_case):
 
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_generators_for.return_value = ({function_mock}, False)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     assert not test_factory.change_random_call(default_test_case, float_function1)
 
 
-def test_change_random_call_primitive(function_mock, default_test_case):
+def test_change_random_call_primitive(
+    function_mock, default_test_case, default_variable_manager
+):
     float_prim = stmt.FloatPrimitiveStatement(default_test_case, 5.0)
     default_test_case.add_statement(float_prim)
 
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_generators_for.return_value = ({function_mock}, False)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     assert not test_factory.change_random_call(default_test_case, float_prim)
 
 
 def test_change_random_call_success(
-    function_mock, method_mock, constructor_mock, default_test_case
+    function_mock,
+    method_mock,
+    constructor_mock,
+    default_test_case,
+    default_variable_manager,
 ):
     float_prim = stmt.FloatPrimitiveStatement(default_test_case, 5.0)
     int0 = stmt.IntPrimitiveStatement(default_test_case, 2)
@@ -947,7 +999,7 @@ def test_change_random_call_success(
 
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_generators_for.return_value = ({function_mock, method_mock}, False)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(test_factory, "change_call") as change_mock:
         assert test_factory.change_random_call(default_test_case, float_function1)
         # fmt: off
@@ -970,7 +1022,11 @@ def test_change_random_call_success(
 
 
 def test_change_random_call_failed(
-    function_mock, method_mock, constructor_mock, default_test_case
+    function_mock,
+    method_mock,
+    constructor_mock,
+    default_test_case,
+    default_variable_manager,
 ):
     float_prim = stmt.FloatPrimitiveStatement(default_test_case, 5.0)
     int0 = stmt.IntPrimitiveStatement(default_test_case, 2)
@@ -985,7 +1041,7 @@ def test_change_random_call_failed(
 
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.get_generators_for.return_value = ({function_mock, method_mock}, False)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     with mock.patch.object(test_factory, "change_call") as change_mock:
         change_mock.side_effect = ConstructionFailedException()
         assert not test_factory.change_random_call(default_test_case, float_function1)
@@ -1008,7 +1064,9 @@ def test_change_random_call_failed(
         # fmt: on
 
 
-def test_change_call_method(constructor_mock, method_mock, default_test_case):
+def test_change_call_method(
+    constructor_mock, method_mock, default_test_case, default_variable_manager
+):
     default_test_case.add_statement(
         stmt.ConstructorStatement(default_test_case, constructor_mock)
     )
@@ -1018,13 +1076,15 @@ def test_change_call_method(constructor_mock, method_mock, default_test_case):
     test_cluster = default_test_case.test_cluster
     feed_typesystem(test_cluster.type_system, constructor_mock)
     feed_typesystem(test_cluster.type_system, method_mock)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     test_factory.change_call(default_test_case, to_replace, method_mock, {})
     assert default_test_case.statements[2].accessible_object() == method_mock
     assert default_test_case.statements[2].ret_val is to_replace.ret_val
 
 
-def test_change_call_constructor(constructor_mock, default_test_case):
+def test_change_call_constructor(
+    constructor_mock, default_test_case, default_variable_manager
+):
     default_test_case.add_statement(
         stmt.FloatPrimitiveStatement(default_test_case, 3.5)
     )
@@ -1032,13 +1092,15 @@ def test_change_call_constructor(constructor_mock, default_test_case):
     default_test_case.add_statement(to_replace)
     test_cluster = default_test_case.test_cluster
     feed_typesystem(test_cluster.type_system, constructor_mock)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     test_factory.change_call(default_test_case, to_replace, constructor_mock, {})
     assert default_test_case.statements[1].accessible_object() == constructor_mock
     assert default_test_case.statements[1].ret_val is to_replace.ret_val
 
 
-def test_change_call_function(function_mock, default_test_case):
+def test_change_call_function(
+    function_mock, default_test_case, default_variable_manager
+):
     default_test_case.add_statement(
         stmt.FloatPrimitiveStatement(default_test_case, 3.5)
     )
@@ -1046,20 +1108,20 @@ def test_change_call_function(function_mock, default_test_case):
     default_test_case.add_statement(to_replace)
     test_cluster = default_test_case.test_cluster
     feed_typesystem(test_cluster.type_system, function_mock)
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     test_factory.change_call(default_test_case, to_replace, function_mock, {})
     assert default_test_case.statements[1].accessible_object() == function_mock
     assert default_test_case.statements[1].ret_val is to_replace.ret_val
 
 
-def test_change_call_unknown(default_test_case):
+def test_change_call_unknown(default_test_case, default_variable_manager):
     default_test_case.add_statement(
         stmt.FloatPrimitiveStatement(default_test_case, 3.5)
     )
     to_replace = stmt.NoneStatement(default_test_case)
     default_test_case.add_statement(to_replace)
     test_cluster = default_test_case.test_cluster
-    test_factory = tf.TestFactory(test_cluster)
+    test_factory = tf.TestFactory(default_variable_manager, test_cluster)
     acc = MagicMock(gao.GenericAccessibleObject)
     acc.is_method.return_value = False
     acc.is_constructor.return_value = False

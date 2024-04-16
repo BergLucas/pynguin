@@ -24,6 +24,7 @@ import pynguin.configuration as config
 import pynguin.testcase.defaulttestcase as dtc
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.testcase as tc
+import pynguin.testcase.testfactory as tf
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 import pynguin.utils.statistics.statistics as stat
@@ -69,6 +70,15 @@ def reset_configuration():  # noqa: PT004
 @pytest.fixture()
 def test_case_mock():
     return MagicMock(tc.TestCase)
+
+
+@pytest.fixture()
+def default_variable_manager():
+    return tf.VariableManager(
+        {
+            tf.BuiltInVariableGenerator(): 1,
+        }
+    )
 
 
 @pytest.fixture()

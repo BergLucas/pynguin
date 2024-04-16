@@ -16,7 +16,6 @@ import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin.analyses.typesystem import InferredSignature
-from pynguin.testcase.statement_to_ast import StatementToAstTransformer
 from pynguin.testcase.statement_to_ast import transform_assignment_statement
 from pynguin.testcase.statement_to_ast import transform_class_primitive_statement
 from pynguin.testcase.statement_to_ast import transform_constructor_statement

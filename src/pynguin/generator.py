@@ -62,6 +62,8 @@ from pynguin.utils.statistics.runtimevariable import RuntimeVariable
 
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from pynguin.analyses.module import ModuleTestCluster
     from pynguin.ga.algorithms.generationalgorithm import GenerationAlgorithm
 
@@ -90,6 +92,15 @@ def set_configuration(configuration: config.Configuration) -> None:
         configuration: The configuration to use.
     """
     config.configuration = configuration
+
+
+def set_plugins(plugins: list[ModuleType]) -> None:
+    """Sets the plugins to use.
+
+    Args:
+        plugins: The plugins to use.
+    """
+    config.plugins = plugins
 
 
 def run_pynguin() -> ReturnCode:

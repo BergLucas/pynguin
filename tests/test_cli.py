@@ -34,9 +34,13 @@ def test_main_empty_argv():
                     with mock.patch.dict(os.environ, {_DANGER_ENV: "foobar"}):
                         generator_mock.return_value = ReturnCode.OK
                         parser = MagicMock()
+                        parser.parse_known_args.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                        )
                         parser_mock.return_value = parser
                         main()
-                        assert len(parser.parse_args.call_args[0][0]) > 0
+                        assert len(parser.parse_known_args.call_args[0][0]) > 0
 
 
 def test_main_with_argv():
@@ -47,10 +51,14 @@ def test_main_with_argv():
                     with mock.patch.dict(os.environ, {_DANGER_ENV: "foobar"}):
                         generator_mock.return_value = ReturnCode.OK
                         parser = MagicMock()
+                        parser.parse_known_args.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                        )
                         parser_mock.return_value = parser
                         args = ["foo", "--help"]
                         main(args)
-                        assert parser.parse_args.call_args == call(args[1:])
+                        assert parser.parse_known_args.call_args == call(args[1:])
 
 
 def test_main_no_env_marker():

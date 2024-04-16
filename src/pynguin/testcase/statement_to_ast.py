@@ -89,7 +89,7 @@ class StatementToAstTransformer:
         try:
             transformer_function = self._transformer_functions[type(stmt)]
         except KeyError as e:
-            raise ValueError(f"Unknown statement type: {type(stmt)}") from e
+            raise NotImplementedError(f"Unknown statement type: {type(stmt)}") from e
 
         return transformer_function(
             stmt,

@@ -42,7 +42,7 @@ from pynguin.testcase.execution import TestCaseExecutor
         [config.Algorithm.MOSA, config.Algorithm.DYNAMOSA],
     ),
 )
-def test_integrate_mosa(module_name: str, algorithm):
+def test_integrate_mosa(module_name: str, algorithm, default_statement_transformer):
     config.configuration.algorithm = algorithm
     config.configuration.stopping.maximum_iterations = 2
     config.configuration.module_name = module_name
@@ -60,7 +60,7 @@ def test_integrate_mosa(module_name: str, algorithm):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         cluster = generate_test_cluster(module_name)
         algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
             executor, cluster

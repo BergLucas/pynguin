@@ -49,7 +49,9 @@ str_1 = human_0.get_name()""",
         ),
     ],
 )
-def test_generate_mutation_assertions(generator, expected_result):
+def test_generate_mutation_assertions(
+    generator, expected_result, default_statement_transformer
+):
     config.configuration.module_name = "tests.fixtures.examples.assertions"
     module_name = config.configuration.module_name
     tracer = ExecutionTracer()
@@ -76,7 +78,7 @@ def test_generate_mutation_assertions(generator, expected_result):
         suite = tsc.TestSuiteChromosome()
         suite.add_test_case_chromosome(chromosome)
 
-        gen = generator(TestCaseExecutor(tracer))
+        gen = generator(TestCaseExecutor(tracer, default_statement_transformer))
         suite.accept(gen)
 
         visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope(prefix="module"), set())
@@ -264,6 +266,7 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
     metrics,
     killed,
     timeout,
+    default_statement_transformer,
 ):
     config.configuration.module_name = module
     module_name = config.configuration.module_name
@@ -283,7 +286,7 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
         suite.add_test_case_chromosome(chromosome)
 
         gen = ag.MutationAnalysisAssertionGenerator(
-            TestCaseExecutor(tracer), testing=True
+            TestCaseExecutor(tracer, default_statement_transformer), testing=True
         )
         suite.accept(gen)
 

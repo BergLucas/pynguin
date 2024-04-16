@@ -264,7 +264,10 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
         self._mutation_tracer.current_thread_identifier = (
             threading.current_thread().ident
         )
-        self._mutation_executor = ex.TestCaseExecutor(self._mutation_tracer)
+        self._mutation_executor = ex.TestCaseExecutor(
+            self._mutation_tracer,
+            plain_executor.statement_transformer,
+        )
         self._mutation_executor.add_observer(ato.AssertionVerificationObserver())
 
         self._transformer = build_transformer(

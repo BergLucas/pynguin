@@ -54,6 +54,8 @@ from pynguin.testcase import export
 from pynguin.testcase.execution import AssertionExecutionObserver
 from pynguin.testcase.execution import ExecutionTracer
 from pynguin.testcase.execution import TestCaseExecutor
+from pynguin.testcase.statement_to_ast import BUILTIN_TRANSFORMER_FUNCTIONS
+from pynguin.testcase.statement_to_ast import StatementToAstTransformer
 from pynguin.utils import randomness
 from pynguin.utils.report import get_coverage_report
 from pynguin.utils.report import render_coverage_report
@@ -269,10 +271,13 @@ def _setup_and_check() -> (
         return None
     tracer.enable()
 
+    statement_transformer = StatementToAstTransformer(BUILTIN_TRANSFORMER_FUNCTIONS)
+
     # Make alias to make the following lines shorter...
     stop = config.configuration.stopping
     executor = TestCaseExecutor(
         tracer,
+        statement_transformer,
         maximum_test_execution_timeout=stop.maximum_test_execution_timeout,
         test_execution_time_per_statement=stop.test_execution_time_per_statement,
     )

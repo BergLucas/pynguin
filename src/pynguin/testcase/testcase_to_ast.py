@@ -71,16 +71,23 @@ class TestCaseToAstVisitor(TestCaseVisitor):
                 # If a statement causes an exception and defines a new name, we don't
                 # actually want to create that name, as it will not be stored anyway.
                 store_call_return = False
-            statement_visitor = stmt_to_ast.StatementToAstVisitor(
-                self._module_aliases, variables, store_call_return=store_call_return
+            statement_transformer = stmt_to_ast.StatementToAstTransformer(
+                stmt_to_ast.BUILTIN_TRANSFORMER_FUNCTIONS
             )
-            statement.accept(statement_visitor)
+
+            statement_node = statement_transformer.transform(
+                statement,
+                self._module_aliases,
+                variables,
+                store_call_return=store_call_return,
+            )
+
             # TODO(fk) better way. Nest visitors?
             assertion_visitor = ata.PyTestAssertionToAstVisitor(
                 variables,
                 self._module_aliases,
                 self._common_modules,
-                statement_node=statement_visitor.ast_node,
+                statement_node=statement_node,
             )
             for assertion in statement.assertions:
                 if self.__should_assertion_be_generated(assertion, statement):

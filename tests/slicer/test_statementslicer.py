@@ -51,7 +51,9 @@ def plus_three_test():
     return transformer.testcases[0]
 
 
-def test_testsuite_statement_checked_coverage_calculation(plus_three_test):
+def test_testsuite_statement_checked_coverage_calculation(
+    plus_three_test, default_statement_transformer
+):
     module_name = "tests.fixtures.linecoverage.plus"
     test_suite = tsc.TestSuiteChromosome()
     test_suite.add_test_case_chromosome(
@@ -68,14 +70,16 @@ def test_testsuite_statement_checked_coverage_calculation(plus_three_test):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(StatementSlicingObserver(tracer))
 
         ff = TestSuiteStatementCheckedCoverageFunction(executor)
         assert ff.compute_coverage(test_suite) == pytest.approx(4 / 8, 0.1, 0.1)
 
 
-def test_testcase_statement_checked_coverage_calculation(plus_three_test):
+def test_testcase_statement_checked_coverage_calculation(
+    plus_three_test, default_statement_transformer
+):
     module_name = "tests.fixtures.linecoverage.plus"
     test_case_chromosome = tcc.TestCaseChromosome(test_case=plus_three_test)
     config.configuration.statistics_output.coverage_metrics = [
@@ -89,7 +93,7 @@ def test_testcase_statement_checked_coverage_calculation(plus_three_test):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(StatementSlicingObserver(tracer))
 
         ff = TestCaseStatementCheckedCoverageFunction(executor)
@@ -139,7 +143,7 @@ def setter_test():
     return tc
 
 
-def test_only_void_function(setter_test):
+def test_only_void_function(setter_test, default_statement_transformer):
     module_name = "tests.fixtures.linecoverage.setter_getter"
     test_case_chromosome = tcc.TestCaseChromosome(test_case=setter_test)
     config.configuration.statistics_output.coverage_metrics = [
@@ -153,7 +157,7 @@ def test_only_void_function(setter_test):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(StatementSlicingObserver(tracer))
 
         ff = TestCaseStatementCheckedCoverageFunction(executor)
@@ -204,7 +208,7 @@ def getter_setter_test():
     return tc
 
 
-def test_getter_before_setter(getter_setter_test):
+def test_getter_before_setter(getter_setter_test, default_statement_transformer):
     module_name = "tests.fixtures.linecoverage.setter_getter"
     test_case_chromosome = tcc.TestCaseChromosome(test_case=getter_setter_test)
     config.configuration.statistics_output.coverage_metrics = [
@@ -218,7 +222,7 @@ def test_getter_before_setter(getter_setter_test):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(StatementSlicingObserver(tracer))
 
         ff = TestCaseStatementCheckedCoverageFunction(executor)
@@ -285,7 +289,7 @@ def setter_getter_test():
     return tc
 
 
-def test_getter_after_setter(setter_getter_test):
+def test_getter_after_setter(setter_getter_test, default_statement_transformer):
     module_name = "tests.fixtures.linecoverage.setter_getter"
     test_case_chromosome = tcc.TestCaseChromosome(test_case=setter_getter_test)
     config.configuration.statistics_output.coverage_metrics = [
@@ -299,7 +303,7 @@ def test_getter_after_setter(setter_getter_test):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(StatementSlicingObserver(tracer))
 
         ff = TestCaseStatementCheckedCoverageFunction(executor)

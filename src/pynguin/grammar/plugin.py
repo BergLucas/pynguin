@@ -29,13 +29,13 @@ from pynguin.utils import randomness
 
 NAME = "csv_fuzzer"
 
-csv_weight: int = 0
+csv_weight: float = 0
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--csv_weight",
-        type=int,
+        type=float,
         default=0,
         help="""Weight to use a CSV file-like object as parameter type during test generation.
         Expects values > 0""",  # noqa: E501
@@ -62,7 +62,7 @@ def statement_remover_hook(  # noqa: D103
 
 
 def variable_generator_hook(  # noqa: D103
-    generators: dict[AbstractVariableGenerator, int]
+    generators: dict[AbstractVariableGenerator, float]
 ) -> None:
     generators[CsvVariableGenerator()] = csv_weight
 

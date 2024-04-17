@@ -103,7 +103,6 @@ class CsvVariableGenerator(AbstractVariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
-        print("generate_variable")
         type_info = test_case.test_cluster.type_system.alias_to_type_info("io.StringIO")
 
         assert type_info is not None

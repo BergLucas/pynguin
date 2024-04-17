@@ -10,14 +10,34 @@ from __future__ import annotations
 import logging
 
 from abc import ABC
+from abc import abstractmethod
 from typing import TYPE_CHECKING
+from typing import Protocol
+from typing import TypeVar
 
 import pynguin.ga.chromosomevisitor as cv
 import pynguin.testcase.testcasevisitor as tcv
+import pynguin.testcase.variablereference as vr
 
 from pynguin.assertion.assertion import Assertion
 from pynguin.assertion.assertion import ExceptionAssertion
-from pynguin.testcase.statement import StatementVisitor
+from pynguin.testcase.statement import BooleanPrimitiveStatement
+from pynguin.testcase.statement import BytesPrimitiveStatement
+from pynguin.testcase.statement import ClassPrimitiveStatement
+from pynguin.testcase.statement import ComplexPrimitiveStatement
+from pynguin.testcase.statement import ConstructorStatement
+from pynguin.testcase.statement import DictStatement
+from pynguin.testcase.statement import EnumPrimitiveStatement
+from pynguin.testcase.statement import FloatPrimitiveStatement
+from pynguin.testcase.statement import FunctionStatement
+from pynguin.testcase.statement import IntPrimitiveStatement
+from pynguin.testcase.statement import ListStatement
+from pynguin.testcase.statement import MethodStatement
+from pynguin.testcase.statement import NoneStatement
+from pynguin.testcase.statement import SetStatement
+from pynguin.testcase.statement import Statement
+from pynguin.testcase.statement import StringPrimitiveStatement
+from pynguin.testcase.statement import TupleStatement
 from pynguin.utils.orderedset import OrderedSet
 
 
@@ -163,103 +183,147 @@ class UnusedStatementsTestCaseVisitor(ModificationAwareTestCaseVisitor):
 
     _logger = logging.getLogger(__name__)
 
+    def __init__(self, primitive_remover: UnusedPrimitiveOrCollectionStatementRemover):
+        """Create a new unused statement visitor.
+
+        Args:
+            primitive_remover: The primitive remover to use
+        """
+        super().__init__()
+        self._primitive_remover = primitive_remover
+
     def visit_default_test_case(self, test_case) -> None:  # noqa: D102
         self._deleted_statement_indexes.clear()
-        primitive_remover = UnusedPrimitiveOrCollectionStatementVisitor()
         size_before = test_case.size()
         # Iterate over copy, to be able to modify original.
-        for stmt in reversed(list(test_case.statements)):
-            stmt.accept(primitive_remover)
+        deleted_statement_indexes = self._primitive_remover.delete_statements_indexes(
+            list(test_case.statements)
+        )
         self._logger.debug(
             "Removed %s unused primitives/collections from test case",
             size_before - test_case.size(),
         )
-        self._deleted_statement_indexes.update(
-            primitive_remover.deleted_statement_indexes
-        )
+        self._deleted_statement_indexes.update(deleted_statement_indexes)
 
 
-class UnusedPrimitiveOrCollectionStatementVisitor(StatementVisitor):
-    """Visits all statements and removes the unused primitives and collections.
+class UnusedPrimitiveOrCollectionStatementRemover:
+    """Remove the unused primitive and collection statements."""
 
-    Has to visit the statements in reverse order.
-    """
+    def __init__(
+        self,
+        remover_functions: dict[
+            type, UnusedPrimitiveOrCollectionStatementRemoverFunction
+        ],
+    ):
+        """Create a new statement remover.
 
-    def __init__(self):  # noqa: D107
-        self._used_references = set()
-        self._deleted_statement_indexes: set[int] = set()
+        Args:
+            remover_functions: A dictionary that maps statement types to functions that
+                remove unused statements.
+        """
+        self._remover_functions = remover_functions
 
-    @property
-    def deleted_statement_indexes(self) -> set[int]:
-        """Provides a set of deleted statement indexes.
+    def delete_statements_indexes(self, statements: list[Statement]) -> set[int]:
+        """Delete unused primitive or collection statements and returns their indexes.
+
+        Args:
+            statements: The statements to check
 
         Returns:
             The deleted statement indexes
         """
-        return self._deleted_statement_indexes
+        used_references: set[vr.VariableReference] = set()
+        deleted_statement_indexes: set[int] = set()
 
-    def _handle_collection_or_primitive(self, stmt) -> None:
-        if stmt.ret_val in self._used_references:
-            self._handle_remaining(stmt)
-        else:
-            self._deleted_statement_indexes.add(stmt.get_position())
-            stmt.test_case.remove_statement(stmt)
+        for stmt in reversed(statements):
+            try:
+                statement_remover_function = self._remover_functions[type(stmt)]
+            except KeyError as e:
+                raise NotImplementedError(
+                    f"Unknown statement type: {type(stmt)}"
+                ) from e
 
-    def _handle_remaining(self, stmt) -> None:
-        used = stmt.get_variable_references()
+            statement_remover_function(stmt, used_references, deleted_statement_indexes)
+
+        return deleted_statement_indexes
+
+
+S_contra = TypeVar("S_contra", bound=Statement, contravariant=True)
+
+
+class UnusedPrimitiveOrCollectionStatementRemoverFunction(Protocol[S_contra]):
+    """Protocol for removing unused primitive or collection statement."""
+
+    @abstractmethod
+    def __call__(
+        self,
+        stmt: S_contra,
+        used_references: set[vr.VariableReference],
+        deleted_statement_indexes: set[int],
+    ) -> None:
+        """Remove unused statements from the test case.
+
+        Args:
+            stmt: The statement to convert.
+            used_references: The used references.
+            deleted_statement_indexes: The deleted statement indexes.
+        """
+
+
+def remove_remaining(
+    stmt: Statement,
+    used_references: set[vr.VariableReference],
+    deleted_statement_indexes: set[int],  # noqa: ARG001
+) -> None:
+    """Remove all remaining statements.
+
+    Args:
+        stmt: The statement to remove.
+        used_references: The used references.
+        deleted_statement_indexes: The deleted statement indexes.
+    """
+    used = stmt.get_variable_references()
+    if stmt.ret_val is not None:
         used.discard(stmt.ret_val)
-        self._used_references.update(used)
+    used_references.update(used)
 
-    def visit_int_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
 
-    def visit_float_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
+def remove_collection_or_primitive(
+    stmt: Statement,
+    used_references: set[vr.VariableReference],
+    deleted_statement_indexes: set[int],
+) -> None:
+    """Remove collection or primitive statements.
 
-    def visit_complex_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
+    Args:
+        stmt: The statement to remove.
+        used_references: The used references.
+        deleted_statement_indexes: The deleted statement indexes.
+    """
+    if stmt.ret_val in used_references:
+        remove_remaining(stmt, used_references, deleted_statement_indexes)
+    else:
+        deleted_statement_indexes.add(stmt.get_position())
+        stmt.test_case.remove_statement(stmt)
 
-    def visit_string_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
 
-    def visit_bytes_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_boolean_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_enum_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_class_primitive_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_none_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_constructor_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_remaining(stmt)
-
-    def visit_method_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_remaining(stmt)
-
-    def visit_function_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_remaining(stmt)
-
-    def visit_field_statement(self, stmt) -> None:  # noqa: D102
-        raise NotImplementedError("No field support yet.")
-
-    def visit_assignment_statement(self, stmt) -> None:  # noqa: D102
-        raise NotImplementedError("No field support yet.")
-
-    def visit_list_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_set_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_tuple_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
-
-    def visit_dict_statement(self, stmt) -> None:  # noqa: D102
-        self._handle_collection_or_primitive(stmt)
+BUILTIN_REMOVER_FUNCTIONS: dict[
+    type, UnusedPrimitiveOrCollectionStatementRemoverFunction
+] = {
+    IntPrimitiveStatement: remove_collection_or_primitive,
+    FloatPrimitiveStatement: remove_collection_or_primitive,
+    ComplexPrimitiveStatement: remove_collection_or_primitive,
+    StringPrimitiveStatement: remove_collection_or_primitive,
+    BytesPrimitiveStatement: remove_collection_or_primitive,
+    BooleanPrimitiveStatement: remove_collection_or_primitive,
+    EnumPrimitiveStatement: remove_collection_or_primitive,
+    NoneStatement: remove_remaining,
+    ClassPrimitiveStatement: remove_collection_or_primitive,
+    ConstructorStatement: remove_remaining,
+    MethodStatement: remove_remaining,
+    FunctionStatement: remove_remaining,
+    ListStatement: remove_collection_or_primitive,
+    SetStatement: remove_collection_or_primitive,
+    TupleStatement: remove_collection_or_primitive,
+    DictStatement: remove_collection_or_primitive,
+}

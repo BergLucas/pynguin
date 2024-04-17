@@ -587,8 +587,11 @@ def _remove_statements_after_exceptions(generation_result):
     truncation = pp.ExceptionTruncation()
     generation_result.accept(truncation)
     if config.configuration.test_case_output.post_process:
+        primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+            pp.BUILTIN_REMOVER_FUNCTIONS
+        )
         unused_primitives_removal = pp.TestCasePostProcessor(
-            [pp.UnusedStatementsTestCaseVisitor()]
+            [pp.UnusedStatementsTestCaseVisitor(primitive_remover)]
         )
         generation_result.accept(unused_primitives_removal)
         # TODO(fk) add more postprocessing stuff.

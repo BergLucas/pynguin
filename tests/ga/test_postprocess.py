@@ -139,11 +139,16 @@ def test_test_case_postprocessor_test():
 
 
 def test_unused_primitives_visitor():
-    visitor = pp.UnusedStatementsTestCaseVisitor()
-    statement = MagicMock()
-    test_case = MagicMock(statements=[statement])
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {stmt.IntPrimitiveStatement: remover_function}
+    )
+    visitor = pp.UnusedStatementsTestCaseVisitor(primitive_remover)
+    test_case = MagicMock()
+    statement = stmt.IntPrimitiveStatement(test_case)
+    test_case.statements = [statement]
     visitor.visit_default_test_case(test_case)
-    assert statement.accept.call_count == 1
+    assert remover_function.call_count == 1
 
 
 # TODO(fk) replace with ast_to_stmt
@@ -165,45 +170,57 @@ def test_remove_integration(constructor_mock):
     )
     test_case.add_statement(ctor0)
     assert test_case.size() == 6
-    visitor = pp.UnusedStatementsTestCaseVisitor()
+    visitor = pp.UnusedStatementsTestCaseVisitor(
+        pp.UnusedPrimitiveOrCollectionStatementRemover(pp.BUILTIN_REMOVER_FUNCTIONS)
+    )
     test_case.accept(visitor)
     assert test_case.statements == [int0, list0, float0, ctor0]
 
 
 @pytest.mark.parametrize(
-    "statement_type, func",
+    "statement_type, args",
     [
-        ("visit_int_primitive_statement", "_handle_collection_or_primitive"),
-        ("visit_float_primitive_statement", "_handle_collection_or_primitive"),
-        ("visit_string_primitive_statement", "_handle_collection_or_primitive"),
-        ("visit_bytes_primitive_statement", "_handle_collection_or_primitive"),
-        ("visit_boolean_primitive_statement", "_handle_collection_or_primitive"),
-        ("visit_enum_statement", "_handle_collection_or_primitive"),
-        ("visit_none_statement", "_handle_collection_or_primitive"),
-        ("visit_constructor_statement", "_handle_remaining"),
-        ("visit_method_statement", "_handle_remaining"),
-        ("visit_function_statement", "_handle_remaining"),
-        ("visit_list_statement", "_handle_collection_or_primitive"),
-        ("visit_set_statement", "_handle_collection_or_primitive"),
-        ("visit_tuple_statement", "_handle_collection_or_primitive"),
-        ("visit_dict_statement", "_handle_collection_or_primitive"),
+        (stmt.IntPrimitiveStatement, (MagicMock(),)),
+        (stmt.FloatPrimitiveStatement, (MagicMock(),)),
+        (stmt.StringPrimitiveStatement, (MagicMock(),)),
+        (stmt.BytesPrimitiveStatement, (MagicMock(),)),
+        (stmt.BooleanPrimitiveStatement, (MagicMock(),)),
+        (stmt.EnumPrimitiveStatement, (MagicMock(), MagicMock(), 0)),
+        (stmt.NoneStatement, (MagicMock(),)),
+        (stmt.ConstructorStatement, (MagicMock(), MagicMock())),
+        (stmt.MethodStatement, (MagicMock(), MagicMock(), MagicMock())),
+        (stmt.FunctionStatement, (MagicMock(), MagicMock())),
+        (stmt.ListStatement, (MagicMock(), MagicMock(), MagicMock())),
+        (stmt.SetStatement, (MagicMock(), MagicMock(), MagicMock())),
+        (stmt.TupleStatement, (MagicMock(), MagicMock(), MagicMock())),
+        (stmt.DictStatement, (MagicMock(), MagicMock(), MagicMock())),
     ],
 )
-def test_all_statements(statement_type, func):
-    visitor = pp.UnusedPrimitiveOrCollectionStatementVisitor()
-    with mock.patch.object(visitor, func) as f:
-        visitor.__getattribute__(statement_type)(MagicMock())  # noqa: PLC2801
-        f.assert_called_once()
+def test_all_primitive_statements(statement_type, args):
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {statement_type: remover_function}
+    )
+    test_case = args[0]
+    statement = statement_type(*args)
+    test_case.statements = [statement]
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 @pytest.mark.parametrize(
-    "statement_type",
+    "statement_type, args",
     [
-        "visit_field_statement",
-        "visit_assignment_statement",
+        (stmt.FieldStatement, (MagicMock(), MagicMock(), MagicMock())),
+        (stmt.AssignmentStatement, (MagicMock(), MagicMock(), MagicMock())),
     ],
 )
-def test_not_implemented_statements(statement_type):
-    visitor = pp.UnusedPrimitiveOrCollectionStatementVisitor()
+def test_not_implemented_statements(statement_type, args):
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        pp.BUILTIN_REMOVER_FUNCTIONS
+    )
+    test_case = args[0]
+    statement = statement_type(*args)
+    test_case.statements = [statement]
     with pytest.raises(NotImplementedError):
-        visitor.__getattribute__(statement_type)(MagicMock())  # noqa: PLC2801
+        primitive_remover.delete_statements_indexes([statement])

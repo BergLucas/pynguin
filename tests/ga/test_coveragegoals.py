@@ -183,7 +183,7 @@ def test_compute_fitness_values_mocked(
         run_suite_mock.assert_called_with(indiv)
 
 
-def test_compute_fitness_values_no_branches():
+def test_compute_fitness_values_no_branches(default_statement_transformer):
     module_name = "tests.fixtures.branchcoverage.nobranches"
     tracer = ExecutionTracer()
     tracer.current_thread_identifier = threading.current_thread().ident
@@ -191,7 +191,7 @@ def test_compute_fitness_values_no_branches():
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         chromosome = _get_test_for_no_branches_fixture(module_name)
         pool = bg.BranchGoalPool(tracer.get_subject_properties())
         goals = bg.create_branch_coverage_fitness_functions(executor, pool)
@@ -250,14 +250,16 @@ def test_compute_fitness_values_no_branches():
         ),
     ],
 )
-def test_compute_fitness_values_branches(test_case, expected_fitness, module_name):
+def test_compute_fitness_values_branches(
+    test_case, expected_fitness, module_name, default_statement_transformer
+):
     tracer = ExecutionTracer()
     tracer.current_thread_identifier = threading.current_thread().ident
     with install_import_hook(module_name, tracer):
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
 
         cluster = generate_test_cluster(module_name)
 
@@ -296,7 +298,7 @@ def _get_test_for_no_branches_fixture(module_name) -> tcc.TestCaseChromosome:
     return tcc.TestCaseChromosome(test_case=test_case)
 
 
-def test_compute_fitness_values_statement_coverage_empty():
+def test_compute_fitness_values_statement_coverage_empty(default_statement_transformer):
     module_name = "tests.fixtures.linecoverage.emptyfile"
     tracer = ExecutionTracer()
     tracer.current_thread_identifier = threading.current_thread().ident
@@ -304,7 +306,7 @@ def test_compute_fitness_values_statement_coverage_empty():
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         chromosome = _get_empty_test()
         goals = bg.create_line_coverage_fitness_functions(executor)
         assert not goals

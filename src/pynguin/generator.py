@@ -243,6 +243,32 @@ def _setup_constant_seeding() -> (
     return wrapped_provider, dynamic_constant_provider
 
 
+def _create_transformer_functions():
+    transformer_functions = dict(BUILTIN_TRANSFORMER_FUNCTIONS)
+
+    for plugin in config.plugins:
+        try:
+            ast_transformer_hook = plugin.ast_transformer_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have an ast_transformer_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            ast_transformer_hook(transformer_functions)
+        except BaseException:
+            logging.exception(
+                'Failed to run ast_transformer_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+    return transformer_functions
+
+
 def _setup_and_check() -> (
     tuple[TestCaseExecutor, ModuleTestCluster, ConstantProvider] | None
 ):
@@ -271,7 +297,7 @@ def _setup_and_check() -> (
         return None
     tracer.enable()
 
-    statement_transformer = StatementToAstTransformer(BUILTIN_TRANSFORMER_FUNCTIONS)
+    statement_transformer = StatementToAstTransformer(_create_transformer_functions())
 
     # Make alias to make the following lines shorter...
     stop = config.configuration.stopping
@@ -583,12 +609,38 @@ def _run() -> ReturnCode:
     return ReturnCode.OK
 
 
+def _create_remover_functions():
+    remover_functions = dict(pp.BUILTIN_REMOVER_FUNCTIONS)
+
+    for plugin in config.plugins:
+        try:
+            statement_remover_hook = plugin.statement_remover_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a statement_remover_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            statement_remover_hook(remover_functions)
+        except BaseException:
+            logging.exception(
+                'Failed to run statement_remover_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+    return remover_functions
+
+
 def _remove_statements_after_exceptions(generation_result):
     truncation = pp.ExceptionTruncation()
     generation_result.accept(truncation)
     if config.configuration.test_case_output.post_process:
         primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
-            pp.BUILTIN_REMOVER_FUNCTIONS
+            _create_remover_functions()
         )
         unused_primitives_removal = pp.TestCasePostProcessor(
             [pp.UnusedStatementsTestCaseVisitor(primitive_remover)]

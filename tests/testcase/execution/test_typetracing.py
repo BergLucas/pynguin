@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -36,10 +36,12 @@ from pynguin.utils.generic.genericaccessibleobject import (
         ("return_none", type(None)),
     ],
 )
-def test_type_reconstruction(test_func, return_type):
+def test_type_reconstruction(test_func, return_type, default_statement_transformer):
     test_cluster = generate_test_cluster("tests.fixtures.type_tracing.return_types")
-    executor = TestCaseExecutor(ExecutionTracer())
-    visitor = AstToTestCaseTransformer(test_cluster, False, EmptyConstantProvider())
+    executor = TestCaseExecutor(ExecutionTracer(), default_statement_transformer)
+    visitor = AstToTestCaseTransformer(
+        test_cluster, False, EmptyConstantProvider()  # noqa: FBT003
+    )
     visitor.visit(
         ast.parse("def test_case():\n   var_0 = module_0." + test_func + "()")
     )
@@ -52,9 +54,11 @@ def test_type_reconstruction(test_func, return_type):
     ] == test_cluster.type_system.convert_type_hint(return_type)
 
 
-def test_type_tracing_observer_separate_proxies_for_args():
+def test_type_tracing_observer_separate_proxies_for_args(default_statement_transformer):
     test_cluster = generate_test_cluster("tests.fixtures.type_tracing.guess_params")
-    visitor = AstToTestCaseTransformer(test_cluster, False, EmptyConstantProvider())
+    visitor = AstToTestCaseTransformer(
+        test_cluster, False, EmptyConstantProvider()  # noqa: FBT003
+    )
     visitor.visit(
         ast.parse(
             "def test_case():\n"
@@ -63,7 +67,7 @@ def test_type_tracing_observer_separate_proxies_for_args():
         )
     )
     test_case = visitor.testcases[0]
-    executor = TestCaseExecutor(ExecutionTracer())
+    executor = TestCaseExecutor(ExecutionTracer(), default_statement_transformer)
     observer = TypeTracingObserver(test_cluster)
     executor.add_observer(observer)
     result = executor.execute(test_case)
@@ -72,9 +76,11 @@ def test_type_tracing_observer_separate_proxies_for_args():
     assert {"__truediv__"} == set(result.proxy_knowledge[(1, "c")].children.keys())
 
 
-def test_type_tracing_test_case_executor_integration():
+def test_type_tracing_test_case_executor_integration(default_statement_transformer):
     test_cluster = generate_test_cluster("tests.fixtures.type_tracing.guess_params")
-    visitor = AstToTestCaseTransformer(test_cluster, False, EmptyConstantProvider())
+    visitor = AstToTestCaseTransformer(
+        test_cluster, False, EmptyConstantProvider()  # noqa: FBT003
+    )
     visitor.visit(
         ast.parse(
             "def test_case():\n"
@@ -83,7 +89,7 @@ def test_type_tracing_test_case_executor_integration():
         )
     )
     test_case = visitor.testcases[0]
-    executor = TestCaseExecutor(ExecutionTracer())
+    executor = TestCaseExecutor(ExecutionTracer(), default_statement_transformer)
     t_executor = TypeTracingTestCaseExecutor(executor, test_cluster)
     t_executor.execute(test_case)
     acc = cast(

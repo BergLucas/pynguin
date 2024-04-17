@@ -1,9 +1,10 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
+# ruff: noqa: E501
 import ast
 import importlib
 import threading
@@ -48,7 +49,9 @@ str_1 = human_0.get_name()""",
         ),
     ],
 )
-def test_generate_mutation_assertions(generator, expected_result):
+def test_generate_mutation_assertions(
+    generator, expected_result, default_statement_transformer
+):
     config.configuration.module_name = "tests.fixtures.examples.assertions"
     module_name = config.configuration.module_name
     tracer = ExecutionTracer()
@@ -56,7 +59,9 @@ def test_generate_mutation_assertions(generator, expected_result):
     with install_import_hook(module_name, tracer):
         importlib.reload(importlib.import_module(module_name))
         cluster = generate_test_cluster(module_name)
-        transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())
+        transformer = AstToTestCaseTransformer(
+            cluster, False, EmptyConstantProvider()  # noqa: FBT003
+        )
         transformer.visit(
             ast.parse(
                 """def test_case_0():
@@ -73,7 +78,7 @@ def test_generate_mutation_assertions(generator, expected_result):
         suite = tsc.TestSuiteChromosome()
         suite.add_test_case_chromosome(chromosome)
 
-        gen = generator(TestCaseExecutor(tracer))
+        gen = generator(TestCaseExecutor(tracer, default_statement_transformer))
         suite.accept(gen)
 
         visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope(prefix="module"), set())
@@ -144,7 +149,8 @@ _MUTANTS = [
             "tests.fixtures.mutation.mutation",
             "def test_case_0():\n    int_0 = 0\n    int_1 = 0\n    int_2 = 0\n"
             "    int_3 = 1\n    float_0 = module_0.foo(int_3)",
-            "int_0 = 0\nint_1 = 0\nint_2 = 0\nint_3 = 1\nfloat_0 = module_0.foo(int_3)\n"
+            "int_0 = 0\nint_1 = 0\nint_2 = 0\nint_3 = 1\nfloat_0 = "
+            "module_0.foo(int_3)\n"
             "assert float_0 == pytest.approx(2.0, abs=0.01, rel=0.01)",
             _MUTANTS,
             ag._MutationMetrics(5, 4, 0),
@@ -199,7 +205,8 @@ _MUTANTS = [
         (
             "tests.fixtures.mutation.expected",
             "def test_case_0():\n    int_0 = 2\n    var_0 = module_0.bar(int_0)",
-            "int_0 = 2\nwith pytest.raises(ValueError):\n    var_0 = module_0.bar(int_0)",
+            "int_0 = 2\nwith pytest.raises(ValueError):\n    "
+            "var_0 = module_0.bar(int_0)",
             [
                 "def bar(foo):\n    if not foo == 2:\n        raise ValueError()",
                 "def bar(foo):\n    if foo == 3:\n        raise ValueError()",
@@ -251,7 +258,7 @@ _MUTANTS = [
         ),
     ],
 )
-def test_mutation_analysis_integration_full(
+def test_mutation_analysis_integration_full(  # noqa: PLR0917
     module,
     test_case_str,
     test_case_str_with_assertions,
@@ -259,6 +266,7 @@ def test_mutation_analysis_integration_full(
     metrics,
     killed,
     timeout,
+    default_statement_transformer,
 ):
     config.configuration.module_name = module
     module_name = config.configuration.module_name
@@ -267,7 +275,9 @@ def test_mutation_analysis_integration_full(
     with install_import_hook(module_name, tracer):
         importlib.reload(importlib.import_module(module_name))
         cluster = generate_test_cluster(module_name)
-        transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())
+        transformer = AstToTestCaseTransformer(
+            cluster, False, EmptyConstantProvider()  # noqa: FBT003
+        )
         transformer.visit(ast.parse(test_case_str))
         test_case = transformer.testcases[0]
 
@@ -276,7 +286,7 @@ def test_mutation_analysis_integration_full(
         suite.add_test_case_chromosome(chromosome)
 
         gen = ag.MutationAnalysisAssertionGenerator(
-            TestCaseExecutor(tracer), testing=True
+            TestCaseExecutor(tracer, default_statement_transformer), testing=True
         )
         suite.accept(gen)
 

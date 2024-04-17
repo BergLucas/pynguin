@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import pynguin.configuration as config
+import pynguin.ga.postprocess as pp
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.testcase as tc
 import pynguin.testcase.variablereference as vr
@@ -138,52 +139,50 @@ def test_primitive_statement_clone(statement_type, default_test_case, value):
 
 
 @pytest.mark.parametrize(
-    "statement_type,value,visitor_method",
+    "statement_type,value",
     [
         (
             stmt.IntPrimitiveStatement,
             42,
-            "visit_int_primitive_statement",
         ),
         (
             stmt.FloatPrimitiveStatement,
             2.1,
-            "visit_float_primitive_statement",
         ),
         (
             stmt.StringPrimitiveStatement,
             "foo",
-            "visit_string_primitive_statement",
         ),
         (
             stmt.BytesPrimitiveStatement,
             b"foo",
-            "visit_bytes_primitive_statement",
         ),
         (
             stmt.BooleanPrimitiveStatement,
             True,
-            "visit_boolean_primitive_statement",
         ),
         (
             stmt.ComplexPrimitiveStatement,
             4 + 1j,
-            "visit_complex_primitive_statement",
         ),
         (
             stmt.ClassPrimitiveStatement,
             0,
-            "visit_class_primitive_statement",
         ),
     ],
 )
 def test_primitive_statement_accept(
-    statement_type, default_test_case, value, visitor_method
+    statement_type,
+    default_test_case,
+    value,
 ):
     stmt = statement_type(default_test_case, value)
-    visitor = MagicMock()
-    stmt.accept(visitor)
-    getattr(visitor, visitor_method).assert_called_once_with(stmt)
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {statement_type: remover_function}
+    )
+    primitive_remover.delete_statements_indexes([stmt])
+    remover_function.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -200,7 +199,7 @@ def test_primitive_statement_accept(
 )
 def test_primitive_statement_equals_same(statement_type, default_test_case, value):
     statement = statement_type(default_test_case, value)
-    assert statement.__eq__(statement)
+    assert statement == statement  # noqa: PLR0124
 
 
 @pytest.mark.parametrize(
@@ -295,13 +294,13 @@ def test_bool_primitive_statement_randomize_value(default_test_case):
 def test_string_primitive_statement_randomize_value(default_test_case):
     statement = stmt.StringPrimitiveStatement(default_test_case)
     statement.randomize_value()
-    assert 0 <= len(statement.value) <= config.configuration.test_creation.string_length
+    assert len(statement.value) <= config.configuration.test_creation.string_length
 
 
 def test_bytes_primitive_statement_randomize_value(default_test_case):
     statement = stmt.BytesPrimitiveStatement(default_test_case)
     statement.randomize_value()
-    assert 0 <= len(statement.value) <= config.configuration.test_creation.bytes_length
+    assert len(statement.value) <= config.configuration.test_creation.bytes_length
     assert isinstance(statement.value, bytes)
 
 
@@ -317,25 +316,25 @@ def test_none_statement_delta(test_case_mock):
     assert statement.value is None
 
 
-def test_string_primitive_statement_random_deletion(test_case_mock):
+def test_string_primitive_statement_random_deletion():
     sample = list("Test")
     result = stmt.StringPrimitiveStatement._random_deletion(sample)
     assert len(result) <= len(sample)
 
 
-def test_string_primitive_statement_random_insertion(test_case_mock):
+def test_string_primitive_statement_random_insertion():
     sample = list("Test")
     result = stmt.StringPrimitiveStatement._random_insertion(sample)
     assert len(result) >= len(sample)
 
 
-def test_string_primitive_statement_random_insertion_empty(test_case_mock):
+def test_string_primitive_statement_random_insertion_empty():
     sample = list("")
     result = stmt.StringPrimitiveStatement._random_insertion(sample)
     assert len(result) >= len(sample)
 
 
-def test_string_primitive_statement_random_replacement(test_case_mock):
+def test_string_primitive_statement_random_replacement():
     sample = list("Test")
     result = stmt.StringPrimitiveStatement._random_replacement(sample)
     assert len(result) == len(sample)
@@ -366,25 +365,25 @@ def test_string_primitive_statement_delta_all(default_test_case):
                 assert statement.value == "ba"
 
 
-def test_bytes_primitive_statement_random_deletion(test_case_mock):
+def test_bytes_primitive_statement_random_deletion():
     sample = list(b"Test")
     result = stmt.BytesPrimitiveStatement._random_deletion(sample)
     assert len(result) <= len(sample)
 
 
-def test_bytes_primitive_statement_random_insertion(test_case_mock):
+def test_bytes_primitive_statement_random_insertion():
     sample = list(b"Test")
     result = stmt.BytesPrimitiveStatement._random_insertion(sample)
     assert len(result) >= len(sample)
 
 
-def test_bytes_primitive_statement_random_insertion_empty(test_case_mock):
+def test_bytes_primitive_statement_random_insertion_empty():
     sample = list(b"")
     result = stmt.BytesPrimitiveStatement._random_insertion(sample)
     assert len(result) >= len(sample)
 
 
-def test_bytes_primitive_statement_random_replacement(test_case_mock):
+def test_bytes_primitive_statement_random_replacement():
     sample = list(b"Test")
     result = stmt.BytesPrimitiveStatement._random_replacement(sample)
     assert len(result) == len(sample)
@@ -496,7 +495,7 @@ def test_float_complex_primitive_statement_delta_round(
 
 
 def test_boolean_primitive_statement_delta(default_test_case):
-    statement = stmt.BooleanPrimitiveStatement(default_test_case, True)
+    statement = stmt.BooleanPrimitiveStatement(default_test_case, True)  # noqa: FBT003
     statement.delta()
     assert not statement.value
 
@@ -564,7 +563,7 @@ def test_primitive_statement_get_position(default_test_case):
 
 def test_primitive_statement_get_position_not_found(default_test_case):
     statement = stmt.IntPrimitiveStatement(default_test_case, 5)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017, PT011
         statement.get_position()
 
 
@@ -640,9 +639,12 @@ def test_enum_statement_hash(test_case_mock):
 def test_enum_statement_accept(test_case_mock):
     enum_ = MagicMock(names=["FOO"])
     statement = stmt.EnumPrimitiveStatement(test_case_mock, enum_)
-    visitor = MagicMock()
-    statement.accept(visitor)
-    visitor.visit_enum_statement.assert_called_once()
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {type(statement): remover_function}
+    )
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 def test_class_statement_delta(default_test_case):

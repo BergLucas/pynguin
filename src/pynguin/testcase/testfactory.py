@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019-2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -11,6 +11,8 @@ import contextlib
 import io
 import logging
 
+from abc import ABC
+from abc import abstractmethod
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -23,12 +25,17 @@ from pynguin.analyses.constants import ConstantProvider
 from pynguin.analyses.constants import DelegatingConstantProvider
 from pynguin.analyses.constants import EmptyConstantProvider
 from pynguin.analyses.typesystem import ANY
+from pynguin.analyses.typesystem import NONE_TYPE
+from pynguin.analyses.typesystem import AnyType
 from pynguin.analyses.typesystem import InferredSignature
 from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
 from pynguin.analyses.typesystem import accept_csv_file_like_object
+from pynguin.analyses.typesystem import TypeVisitor
+from pynguin.analyses.typesystem import UnionType
+from pynguin.analyses.typesystem import Unsupported
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
 from pynguin.grammar.csv import create_csv_grammar
@@ -45,9 +52,559 @@ if TYPE_CHECKING:
     from pynguin.utils.orderedset import OrderedSet
 
 
+class VariableManager:
+    """A manager for variables in a test case."""
+
+    _logger = logging.getLogger(__name__)
+
+    def __init__(
+        self,
+        variable_generators: dict[AbstractVariableGenerator, int],
+    ):
+        """Initialize the variable manager.
+
+        Args:
+            variable_generators: The variable generators to use
+        """
+        if not variable_generators:
+            raise ValueError("No variable generators provided")
+
+        self._variable_generators = variable_generators
+
+    def reuse_variable(
+        self, test_case: tc.TestCase, parameter_type: ProperType, position: int
+    ) -> vr.VariableReference | None:
+        """Reuse an existing variable, if possible.
+
+        Args:
+            test_case: the test case to take the variable from
+            parameter_type: the type of the variable that is needed
+            position: the position to limit the search
+
+        Returns:
+            A matching existing variable, if existing
+        """
+        objects = test_case.get_objects(parameter_type, position)
+        probability: float = (
+            config.configuration.test_creation.primitive_reuse_probability
+            if parameter_type.accept(is_primitive_type)
+            else config.configuration.test_creation.object_reuse_probability
+        )
+        if objects and randomness.next_float() <= probability:
+            var = randomness.choice(objects)
+            self._logger.debug("Reusing variable %s for type %s", var, parameter_type)
+            return var
+        return None
+
+    def create_or_reuse_variable(
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+        *,
+        allow_none: bool,
+    ) -> vr.VariableReference | None:
+        """Create or reuse a variable of the given type.
+
+        Args:
+            test_factory: The test factory to use
+            test_case: The test case to take the variable from
+            parameter_type: the type of the variable that is needed
+            position: the position to limit the search
+            recursion_depth: the current recursion level
+            allow_none: whether a None value is allowed
+
+        Returns:
+            A variable if found
+
+        Raises:
+            ConstructionFailedException: if construction of an object failed
+        """
+        if (
+            reused_variable := self.reuse_variable(test_case, parameter_type, position)
+        ) is not None:
+            return reused_variable
+        if (
+            created_variable := self.attempt_generation(
+                test_factory,
+                test_case,
+                parameter_type,
+                position,
+                recursion_depth,
+                allow_none=allow_none,
+            )
+        ) is not None:
+            return created_variable
+        return self._get_variable_fallback(
+            test_factory,
+            test_case,
+            parameter_type,
+            position,
+            recursion_depth,
+            allow_none=allow_none,
+        )
+
+    def attempt_generation(
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+        *,
+        allow_none: bool,
+    ) -> vr.VariableReference | None:
+        """Attempt to generate a variable of the given type.
+
+        Args:
+            test_factory: The test factory to use
+            test_case: The test case to take the variable from
+            parameter_type: the type of the variable that is needed
+            position: the position to limit the search
+            recursion_depth: the current recursion level
+            allow_none: whether a None value is allowed
+
+        Returns:
+            A variable if found
+
+        Raises:
+            ConstructionFailedException: if construction of an object failed
+        """
+        population: list[AbstractVariableGenerator] = []
+        weights: list[int] = []
+        for generator, weight in self._variable_generators.items():
+            if parameter_type.accept(generator.supported_types):
+                population.append(generator)
+                weights.append(weight)
+
+        variable_generator: AbstractVariableGenerator = randomness.choices(
+            population, weights, k=1
+        )[0]
+
+        return variable_generator.generate_variable(
+            test_factory=test_factory,
+            test_case=test_case,
+            parameter_type=parameter_type,
+            position=position,
+            recursion_depth=recursion_depth,
+            allow_none=allow_none,
+        )
+
+    def _get_variable_fallback(
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+        *,
+        allow_none: bool,
+    ) -> vr.VariableReference | None:
+        """Best effort approach to return some kind of matching variable.
+
+        Args:
+            test_factory: The test factory to use
+            test_case: The test case to take the variable from
+            parameter_type: the type of the variable that is needed
+            position: the position to limit the search
+            recursion_depth: the current recursion level
+            allow_none: whether a None value is allowed
+
+        Returns:
+            A variable if found
+
+        Raises:
+            ConstructionFailedException: if construction of an object failed
+        """
+        objects = test_case.get_objects(parameter_type, position)
+
+        # No objects to choose from, so either create random type variable or use None.
+        if not objects:
+            if randomness.next_float() <= 0.85:
+                return self.create_or_reuse_variable(
+                    test_factory=test_factory,
+                    test_case=test_case,
+                    parameter_type=randomness.choice(
+                        test_factory.test_cluster.get_all_generatable_types()
+                    ),
+                    position=position,
+                    recursion_depth=recursion_depth + 1,
+                    allow_none=allow_none,
+                )
+            if allow_none:
+                return self.attempt_generation(
+                    test_factory,
+                    test_case,
+                    NONE_TYPE,
+                    position,
+                    recursion_depth,
+                    allow_none=allow_none,
+                )
+            raise ConstructionFailedException(f"No objects for type {parameter_type}")
+
+        # Could not create, so re-use an existing variable.
+        self._logger.debug(
+            "Choosing from %d existing objects: %s", len(objects), objects
+        )
+        reference = randomness.choice(objects)
+        self._logger.debug(
+            "Use existing object of type %s: %s", parameter_type, reference
+        )
+        return reference
+
+
+class SupportedTypes(ABC, TypeVisitor[bool]):
+    """A visitor for supported types."""
+
+    def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
+        return True
+
+    def visit_none_type(self, left: NoneType) -> bool:  # noqa: D102
+        return False
+
+    def visit_union_type(self, left: UnionType) -> bool:  # noqa: D102
+        return any(item.accept(self) for item in left.items)
+
+    def visit_unsupported_type(self, left: Unsupported) -> bool:  # noqa: D102
+        raise NotImplementedError("This type shall not be used during runtime")
+
+
+class AbstractVariableGenerator(ABC):
+    """An abstract variable generator."""
+
+    @property
+    @abstractmethod
+    def supported_types(self) -> SupportedTypes:
+        """Provides the supported types.
+
+        Returns:
+            The supported types
+        """
+
+    @abstractmethod
+    def generate_variable(
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+        *,
+        allow_none: bool,
+    ) -> vr.VariableReference | None:
+        """Generate a variable of the given type.
+
+        Args:
+            test_factory: The test factory to use
+            test_case: The test case to add the variable to
+            parameter_type: The type of the variable to generate
+            position: The position to insert the variable
+            recursion_depth: The current recursion depth
+            allow_none: Whether a None value is allowed
+
+        Returns:
+            A variable reference to the generated variable, if possible
+
+        Raises:
+            ConstructionFailedException: if construction of an object failed
+        """
+
+
+class _BuiltInSupportedTypes(SupportedTypes):
+    """A built-in supported types visitor."""
+
+    def visit_any_type(self, left: AnyType) -> bool:
+        return True
+
+    def visit_none_type(self, left: NoneType) -> bool:
+        return True
+
+    def visit_instance(self, left: Instance) -> bool:
+        return True
+
+    def visit_tuple_type(self, left: TupleType) -> bool:
+        return True
+
+    def visit_union_type(self, left: UnionType) -> bool:
+        return True
+
+
+_builtin_supported_types = _BuiltInSupportedTypes()
+
+
+class BuiltInVariableGenerator(AbstractVariableGenerator):
+    """A built-in variable generator."""
+
+    @property
+    def supported_types(self) -> SupportedTypes:  # noqa: D102
+        return _builtin_supported_types
+
+    def generate_variable(  # noqa: D102
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+        *,
+        allow_none: bool,
+    ) -> vr.VariableReference | None:
+        # We only select a concrete type e.g. from a union, when we are forced to
+        # choose one.
+        parameter_type = test_factory.test_cluster.select_concrete_type(parameter_type)
+
+        if isinstance(parameter_type, NoneType):
+            return self._create_none(test_case, position, recursion_depth)
+        # TODO(fk) think about creating collections/primitives from calls?
+        if parameter_type.accept(is_primitive_type):
+            return self._create_primitive(
+                test_factory,
+                test_case,
+                cast(Instance, parameter_type),
+                position,
+                recursion_depth,
+                constant_provider=test_factory.constant_provider,
+            )
+        if parameter_type.accept(is_collection_type):
+            return self._create_collection(
+                test_factory,
+                test_case,
+                parameter_type,
+                position,
+                recursion_depth,
+            )
+        type_generators, only_any = test_factory.test_cluster.get_generators_for(
+            parameter_type
+        )
+        if type_generators and not only_any:
+            type_generator = randomness.choice(type_generators)
+            return test_factory.append_generic_accessible(
+                test_case,
+                type_generator,
+                position=position,
+                recursion_depth=recursion_depth + 1,
+                allow_none=allow_none,
+            )
+        return None
+
+    @staticmethod
+    def _create_none(
+        test_case: tc.TestCase,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        # If there already is a None alias just return it.
+        # TODO(fk) better way?
+        for statement in test_case.statements[
+            : min(len(test_case.statements), position)
+        ]:
+            if isinstance(statement, stmt.NoneStatement):
+                return statement.ret_val
+
+        statement = stmt.NoneStatement(test_case)
+        ret = test_case.add_variable_creating_statement(statement, position)
+        ret.distance = recursion_depth
+        return ret
+
+    @staticmethod
+    def _create_primitive(  # noqa: PLR0917
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: Instance,
+        position: int,
+        recursion_depth: int,
+        constant_provider: ConstantProvider,
+    ) -> vr.VariableReference:
+        # Need to adhere to numeric tower.
+        if (
+            subtypes := test_factory.test_cluster.type_system.numeric_tower.get(
+                parameter_type
+            )
+        ) is not None:
+            parameter_type = randomness.choice(subtypes)
+
+        match parameter_type.type.name:
+            case "int":
+                statement: stmt.PrimitiveStatement = stmt.IntPrimitiveStatement(
+                    test_case, constant_provider=constant_provider
+                )
+            case "float":
+                statement = stmt.FloatPrimitiveStatement(
+                    test_case, constant_provider=constant_provider
+                )
+            case "complex":
+                statement = stmt.ComplexPrimitiveStatement(
+                    test_case, constant_provider=constant_provider
+                )
+            case "bool":
+                statement = stmt.BooleanPrimitiveStatement(test_case)
+            case "bytes":
+                statement = stmt.BytesPrimitiveStatement(
+                    test_case, constant_provider=constant_provider
+                )
+            case "str":
+                statement = stmt.StringPrimitiveStatement(
+                    test_case, constant_provider=constant_provider
+                )
+            case "type":
+                statement = stmt.ClassPrimitiveStatement(test_case)
+            case _:
+                raise RuntimeError(f"Unknown primitive {parameter_type}")
+        ret = test_case.add_variable_creating_statement(statement, position)
+        ret.distance = recursion_depth
+        return ret
+
+    def _create_collection(
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        if isinstance(parameter_type, Instance):
+            if parameter_type.type.raw_type in {list, set}:
+                return self._create_list_or_set(
+                    test_factory, test_case, parameter_type, position, recursion_depth
+                )
+            if parameter_type.type.raw_type is dict:
+                return self._create_dict(
+                    test_factory, test_case, parameter_type, position, recursion_depth
+                )
+        if isinstance(parameter_type, TupleType):
+            return self._create_tuple(
+                test_factory, test_case, parameter_type, position, recursion_depth
+            )
+        raise RuntimeError("Unknown collection type")
+
+    # TODO(fk) Methods below should be refactored asap,
+    #  as they contain a lot of duplicate code.
+    # TODO(fk) improve generic support.
+    @staticmethod
+    def _create_list_or_set(
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: Instance,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        element_type = parameter_type.args[0]
+        size = randomness.next_int(
+            0, config.configuration.test_creation.collection_size
+        )
+        elements = []
+        for _ in range(size):
+            previous_length = test_case.size()
+            var = test_factory.variable_manager.create_or_reuse_variable(
+                test_factory,
+                test_case,
+                element_type,
+                position,
+                recursion_depth + 1,
+                allow_none=True,
+            )
+            if var is not None:
+                elements.append(var)
+            position += test_case.size() - previous_length
+        collection_stmt = (
+            stmt.ListStatement(test_case, parameter_type, elements)
+            if parameter_type.type.raw_type is list
+            else stmt.SetStatement(test_case, parameter_type, elements)
+        )
+        ret = test_case.add_variable_creating_statement(collection_stmt, position)
+        ret.distance = recursion_depth
+        return ret
+
+    @staticmethod
+    def _create_tuple(
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: TupleType,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        if parameter_type.unknown_size:
+            # Untyped tuple, time to guess...
+            size = randomness.next_int(
+                0, config.configuration.test_creation.collection_size
+            )
+            args = tuple(
+                randomness.choice(test_factory.test_cluster.get_all_generatable_types())
+                for _ in range(size)
+            )
+        else:
+            args = parameter_type.args
+        elements = []
+        for arg_type in args:
+            previous_length = test_case.size()
+            var = test_factory.variable_manager.create_or_reuse_variable(
+                test_factory,
+                test_case,
+                arg_type,
+                position,
+                recursion_depth + 1,
+                allow_none=True,
+            )
+            if var is not None:
+                elements.append(var)
+            position += test_case.size() - previous_length
+        ret = test_case.add_variable_creating_statement(
+            stmt.TupleStatement(test_case, parameter_type, elements), position
+        )
+        ret.distance = recursion_depth
+        return ret
+
+    @staticmethod
+    def _create_dict(
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: Instance,
+        position: int,
+        recursion_depth: int,
+    ) -> vr.VariableReference:
+        args = parameter_type.args
+        key_type = args[0]
+        value_type = args[1]
+        size = randomness.next_int(
+            0, config.configuration.test_creation.collection_size
+        )
+        elements = []
+        for _ in range(size):
+            previous_length = test_case.size()
+            key = test_factory.variable_manager.create_or_reuse_variable(
+                test_factory,
+                test_case,
+                key_type,
+                position,
+                recursion_depth + 1,
+                allow_none=True,
+            )
+            position += test_case.size() - previous_length
+            previous_length = test_case.size()
+            value = test_factory.variable_manager.create_or_reuse_variable(
+                test_factory,
+                test_case,
+                value_type,
+                position,
+                recursion_depth + 1,
+                allow_none=True,
+            )
+            position += test_case.size() - previous_length
+            if key is not None and value is not None:
+                elements.append((key, value))
+
+        ret = test_case.add_variable_creating_statement(
+            stmt.DictStatement(test_case, parameter_type, elements), position
+        )
+        ret.distance = recursion_depth
+        return ret
+
+
 # TODO(fk) find better name for this?
 # TODO split this monster!
-class TestFactory:
+class TestFactory:  # noqa: PLR0904
     """A factory for test-case generation.
 
     This factory does not generate test cases but provides all necessary means to
@@ -58,19 +615,49 @@ class TestFactory:
 
     def __init__(
         self,
+        variable_manager: VariableManager,
         test_cluster: ModuleTestCluster,
         constant_provider: ConstantProvider | None = None,
     ):
         """Initializes a new factory.
 
         Args:
+            variable_manager: The variable manager
             test_cluster: The underlying test cluster
             constant_provider: An optional provider for seeded constant values.
         """
+        self._variable_manager = variable_manager
         self._test_cluster = test_cluster
         if constant_provider is None:
             constant_provider = EmptyConstantProvider()
         self._constant_provider: ConstantProvider = constant_provider
+
+    @property
+    def variable_manager(self) -> VariableManager:
+        """Provides the variable manager.
+
+        Returns:
+            The variable manager
+        """
+        return self._variable_manager
+
+    @property
+    def test_cluster(self) -> ModuleTestCluster:
+        """Provides the test cluster.
+
+        Returns:
+            The test cluster
+        """
+        return self._test_cluster
+
+    @property
+    def constant_provider(self) -> ConstantProvider:
+        """Provides the constant provider.
+
+        Returns:
+            The constant provider
+        """
+        return self._constant_provider
 
     def append_statement(
         self,
@@ -294,7 +881,8 @@ class TestFactory:
         signature = method.inferred_signature
         length = test_case.size()
         if callee is None:
-            callee = self._create_or_reuse_variable(
+            callee = self._variable_manager.create_or_reuse_variable(
+                self,
                 test_case,
                 self._test_cluster.type_system.make_instance(method.owner),
                 position,
@@ -360,7 +948,8 @@ class TestFactory:
 
         length = test_case.size()
         if callee is None:
-            callee = self._create_or_reuse_variable(
+            callee = self._variable_manager.create_or_reuse_variable(
+                self,
                 test_case,
                 self._test_cluster.type_system.make_instance(field.owner),
                 position,
@@ -972,7 +1561,8 @@ class TestFactory:
             ):
                 continue
 
-            var = self._create_or_reuse_variable(
+            var = self._variable_manager.create_or_reuse_variable(
+                self,
                 test_case,
                 parameter_type,
                 position,
@@ -994,110 +1584,6 @@ class TestFactory:
 
         self._logger.debug("Satisfied %d parameters", len(parameters))
         return parameters
-
-    def _reuse_variable(
-        self, test_case: tc.TestCase, parameter_type: ProperType, position: int
-    ) -> vr.VariableReference | None:
-        """Reuse an existing variable, if possible.
-
-        Args:
-            test_case: the test case to take the variable from
-            parameter_type: the type of the variable that is needed
-            position: the position to limit the search
-
-        Returns:
-            A matching existing variable, if existing
-        """
-        objects = test_case.get_objects(parameter_type, position)
-        probability: float = (
-            config.configuration.test_creation.primitive_reuse_probability
-            if parameter_type.accept(is_primitive_type)
-            else config.configuration.test_creation.object_reuse_probability
-        )
-        if objects and randomness.next_float() <= probability:
-            var = randomness.choice(objects)
-            self._logger.debug("Reusing variable %s for type %s", var, parameter_type)
-            return var
-        return None
-
-    def _get_variable_fallback(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: ProperType,
-        position: int,
-        recursion_depth: int,
-        *,
-        allow_none: bool,
-    ) -> vr.VariableReference | None:
-        """Best effort approach to return some kind of matching variable.
-
-        Args:
-            test_case: The test case to take the variable from
-            parameter_type: the type of the variable that is needed
-            position: the position to limit the search
-            recursion_depth: the current recursion level
-            allow_none: whether a None value is allowed
-
-        Returns:
-            A variable if found
-
-        Raises:
-            ConstructionFailedException: if construction of an object failed
-        """
-        objects = test_case.get_objects(parameter_type, position)
-
-        # No objects to choose from, so either create random type variable or use None.
-        if not objects:
-            if randomness.next_float() <= 0.85:
-                return self._create_or_reuse_variable(
-                    test_case=test_case,
-                    parameter_type=randomness.choice(
-                        self._test_cluster.get_all_generatable_types()
-                    ),
-                    position=position,
-                    recursion_depth=recursion_depth + 1,
-                    allow_none=allow_none,
-                )
-            if allow_none:
-                return self._create_none(test_case, position, recursion_depth)
-            raise ConstructionFailedException(f"No objects for type {parameter_type}")
-
-        # Could not create, so re-use an existing variable.
-        self._logger.debug(
-            "Choosing from %d existing objects: %s", len(objects), objects
-        )
-        reference = randomness.choice(objects)
-        self._logger.debug(
-            "Use existing object of type %s: %s", parameter_type, reference
-        )
-        return reference
-
-    def _create_or_reuse_variable(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: ProperType,
-        position: int,
-        recursion_depth: int,
-        *,
-        allow_none: bool,
-    ) -> vr.VariableReference | None:
-        if (
-            reused_variable := self._reuse_variable(test_case, parameter_type, position)
-        ) is not None:
-            return reused_variable
-        if (
-            created_variable := self._attempt_generation(
-                test_case,
-                parameter_type,
-                position,
-                recursion_depth,
-                allow_none=allow_none,
-            )
-        ) is not None:
-            return created_variable
-        return self._get_variable_fallback(
-            test_case, parameter_type, position, recursion_depth, allow_none=allow_none
-        )
 
     def _attempt_generation(
         self,
@@ -1155,191 +1641,6 @@ class TestFactory:
                 allow_none=allow_none,
             )
         return None
-
-    @staticmethod
-    def _create_none(
-        test_case: tc.TestCase,
-        position: int,
-        recursion_depth: int,
-    ) -> vr.VariableReference:
-        # If there already is a None alias just return it.
-        # TODO(fk) better way?
-        for statement in test_case.statements[
-            : min(len(test_case.statements), position)
-        ]:
-            if isinstance(statement, stmt.NoneStatement):
-                return statement.ret_val
-
-        statement = stmt.NoneStatement(test_case)
-        ret = test_case.add_variable_creating_statement(statement, position)
-        ret.distance = recursion_depth
-        return ret
-
-    def _create_primitive(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: Instance,
-        position: int,
-        recursion_depth: int,
-        constant_provider: ConstantProvider,
-    ) -> vr.VariableReference:
-        # Need to adhere to numeric tower.
-        if (
-            subtypes := self._test_cluster.type_system.numeric_tower.get(parameter_type)
-        ) is not None:
-            parameter_type = randomness.choice(subtypes)
-
-        match parameter_type.type.name:
-            case "int":
-                statement: stmt.PrimitiveStatement = stmt.IntPrimitiveStatement(
-                    test_case, constant_provider=constant_provider
-                )
-            case "float":
-                statement = stmt.FloatPrimitiveStatement(
-                    test_case, constant_provider=constant_provider
-                )
-            case "complex":
-                statement = stmt.ComplexPrimitiveStatement(
-                    test_case, constant_provider=constant_provider
-                )
-            case "bool":
-                statement = stmt.BooleanPrimitiveStatement(test_case)
-            case "bytes":
-                statement = stmt.BytesPrimitiveStatement(
-                    test_case, constant_provider=constant_provider
-                )
-            case "str":
-                statement = stmt.StringPrimitiveStatement(
-                    test_case, constant_provider=constant_provider
-                )
-            case "type":
-                statement = stmt.ClassPrimitiveStatement(test_case)
-            case _:
-                raise RuntimeError(f"Unknown primitive {parameter_type}")
-        ret = test_case.add_variable_creating_statement(statement, position)
-        ret.distance = recursion_depth
-        return ret
-
-    def _create_collection(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: ProperType,
-        position: int,
-        recursion_depth: int,
-    ) -> vr.VariableReference:
-        if isinstance(parameter_type, Instance):
-            if parameter_type.type.raw_type in {list, set}:
-                return self._create_list_or_set(
-                    test_case, parameter_type, position, recursion_depth
-                )
-            if parameter_type.type.raw_type is dict:
-                return self._create_dict(
-                    test_case, parameter_type, position, recursion_depth
-                )
-        if isinstance(parameter_type, TupleType):
-            return self._create_tuple(
-                test_case, parameter_type, position, recursion_depth
-            )
-        raise RuntimeError("Unknown collection type")
-
-    # TODO(fk) Methods below should be refactored asap,
-    #  as they contain a lot of duplicate code.
-    # TODO(fk) improve generic support.
-    def _create_list_or_set(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: Instance,
-        position: int,
-        recursion_depth: int,
-    ) -> vr.VariableReference:
-        element_type = parameter_type.args[0]
-        size = randomness.next_int(
-            0, config.configuration.test_creation.collection_size
-        )
-        elements = []
-        for _ in range(size):
-            previous_length = test_case.size()
-            var = self._create_or_reuse_variable(
-                test_case, element_type, position, recursion_depth + 1, allow_none=True
-            )
-            if var is not None:
-                elements.append(var)
-            position += test_case.size() - previous_length
-        collection_stmt = (
-            stmt.ListStatement(test_case, parameter_type, elements)
-            if parameter_type.type.raw_type is list
-            else stmt.SetStatement(test_case, parameter_type, elements)
-        )
-        ret = test_case.add_variable_creating_statement(collection_stmt, position)
-        ret.distance = recursion_depth
-        return ret
-
-    def _create_tuple(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: TupleType,
-        position: int,
-        recursion_depth: int,
-    ) -> vr.VariableReference:
-        if parameter_type.unknown_size:
-            # Untyped tuple, time to guess...
-            size = randomness.next_int(
-                0, config.configuration.test_creation.collection_size
-            )
-            args = tuple(
-                randomness.choice(self._test_cluster.get_all_generatable_types())
-                for _ in range(size)
-            )
-        else:
-            args = parameter_type.args
-        elements = []
-        for arg_type in args:
-            previous_length = test_case.size()
-            var = self._create_or_reuse_variable(
-                test_case, arg_type, position, recursion_depth + 1, allow_none=True
-            )
-            if var is not None:
-                elements.append(var)
-            position += test_case.size() - previous_length
-        ret = test_case.add_variable_creating_statement(
-            stmt.TupleStatement(test_case, parameter_type, elements), position
-        )
-        ret.distance = recursion_depth
-        return ret
-
-    def _create_dict(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: Instance,
-        position: int,
-        recursion_depth: int,
-    ) -> vr.VariableReference:
-        args = parameter_type.args
-        key_type = args[0]
-        value_type = args[1]
-        size = randomness.next_int(
-            0, config.configuration.test_creation.collection_size
-        )
-        elements = []
-        for _ in range(size):
-            previous_length = test_case.size()
-            key = self._create_or_reuse_variable(
-                test_case, key_type, position, recursion_depth + 1, allow_none=True
-            )
-            position += test_case.size() - previous_length
-            previous_length = test_case.size()
-            value = self._create_or_reuse_variable(
-                test_case, value_type, position, recursion_depth + 1, allow_none=True
-            )
-            position += test_case.size() - previous_length
-            if key is not None and value is not None:
-                elements.append((key, value))
-
-        ret = test_case.add_variable_creating_statement(
-            stmt.DictStatement(test_case, parameter_type, elements), position
-        )
-        ret.distance = recursion_depth
-        return ret
 
     def _create_csv_file_like_object(
         self,

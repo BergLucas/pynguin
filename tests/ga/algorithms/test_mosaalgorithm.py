@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -18,7 +18,7 @@ from pynguin.testcase.execution import ExecutionTracer
 from pynguin.testcase.execution import TestCaseExecutor
 
 
-@pytest.fixture
+@pytest.fixture()
 def mosa_strategy():
     return MOSAAlgorithm()
 
@@ -29,8 +29,10 @@ def test_property_chromosome_factory(mosa_strategy):
     assert mosa_strategy.chromosome_factory == factory
 
 
-def test_property_executor(mosa_strategy):
-    executor = TestCaseExecutor(MagicMock(ExecutionTracer))
+def test_property_executor(mosa_strategy, default_statement_transformer):
+    executor = TestCaseExecutor(
+        MagicMock(ExecutionTracer), default_statement_transformer
+    )
     mosa_strategy.executor = executor
     assert mosa_strategy.executor == executor
 

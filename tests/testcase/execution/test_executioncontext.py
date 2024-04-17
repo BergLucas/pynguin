@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -13,17 +13,21 @@ import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin.testcase.execution import ExecutionContext
 from pynguin.testcase.execution import ModuleProvider
+from pynguin.testcase.statement_to_ast import BUILTIN_TRANSFORMER_FUNCTIONS
+from pynguin.testcase.statement_to_ast import StatementToAstTransformer
 
 
 def test_get_reference_value():
-    ctx = ExecutionContext(ModuleProvider())
+    statement_transformer = StatementToAstTransformer(BUILTIN_TRANSFORMER_FUNCTIONS)
+    ctx = ExecutionContext(statement_transformer, ModuleProvider())
     ref = vr.VariableReference(MagicMock(), int)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError):  # noqa: PT011
         ctx.get_reference_value(ref)
 
 
 def test_get_reference_value_2():
-    ctx = ExecutionContext(ModuleProvider())
+    statement_transformer = StatementToAstTransformer(BUILTIN_TRANSFORMER_FUNCTIONS)
+    ctx = ExecutionContext(statement_transformer, ModuleProvider())
     module_mock = MagicMock(foo=MagicMock(bar=5))
     ref = vr.FieldReference(
         vr.StaticModuleFieldReference(gao.GenericStaticModuleField("sys", "foo", int)),
@@ -34,7 +38,8 @@ def test_get_reference_value_2():
 
 
 def test_get_reference_value_3(test_case_mock):
-    ctx = ExecutionContext(ModuleProvider())
+    statement_transformer = StatementToAstTransformer(BUILTIN_TRANSFORMER_FUNCTIONS)
+    ctx = ExecutionContext(statement_transformer, ModuleProvider())
     var_mock = MagicMock(foo=MagicMock(bar=5))
     var = vr.VariableReference(test_case_mock, int)
     ref = vr.FieldReference(

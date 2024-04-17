@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -10,8 +10,7 @@
 #
 #  SPDX-License-Identifier: MIT
 #
-import os
-
+from pathlib import Path
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -31,30 +30,26 @@ from pynguin.ga.generationalgorithmfactory import TestSuiteGenerationAlgorithmFa
 
 @pytest.fixture()
 def seed_modules_path():
-    dummy_test_file = os.path.join(
-        os.path.dirname(__file__),
-        "",
-        "..",
-        "fixtures",
-        "seeding",
-        "initialpopulationseeding",
-        "seedmodules",
+    return (
+        Path(__file__).parent
+        / ".."
+        / "fixtures"
+        / "seeding"
+        / "initialpopulationseeding"
+        / "seedmodules"
     )
-    return dummy_test_file
 
 
 @pytest.fixture()
 def triangle_test_cluster() -> ModuleTestCluster:
-    test_cluster = generate_test_cluster("tests.fixtures.examples.triangle")
-    return test_cluster
+    return generate_test_cluster("tests.fixtures.examples.triangle")
 
 
 @pytest.fixture()
 def dummy_test_cluster() -> ModuleTestCluster:
-    test_cluster = generate_test_cluster(
+    return generate_test_cluster(
         "tests.fixtures.seeding.initialpopulationseeding.dummycontainer"
     )
-    return test_cluster
 
 
 @pytest.fixture()
@@ -113,7 +108,7 @@ def test_get_seeded_testcase(
     ],
 )
 @mock.patch("pynguin.utils.randomness.choice")
-def test_collect_different_types(
+def test_collect_different_types(  # noqa: PLR0917
     rand_mock,
     constant_provider,
     seed_modules_path,
@@ -148,7 +143,7 @@ def test_collect_different_types(
     ],
 )
 @mock.patch("pynguin.utils.randomness.choice")
-def test_create_assertion(
+def test_create_assertion(  # noqa: PLR0917
     rand_mock,
     constant_provider,
     seed_modules_path,
@@ -244,12 +239,20 @@ def test_seeded_test_case_factory_with_delegation(
 )
 @mock.patch("pynguin.testcase.execution.TestCaseExecutor")
 def test_algorithm_generation_factory(
-    mock_class, constant_provider, dummy_test_cluster, enabled, fac_type
+    mock_class,
+    constant_provider,
+    dummy_test_cluster,
+    enabled,
+    fac_type,
+    default_variable_manager,
 ):
     config.configuration.seeding.initial_population_seeding = enabled
     config.configuration.algorithm = config.Algorithm.MIO
     tsfactory = TestSuiteGenerationAlgorithmFactory(
-        mock_class.return_value, dummy_test_cluster, constant_provider
+        mock_class.return_value,
+        dummy_test_cluster,
+        default_variable_manager,
+        constant_provider,
     )
     with mock.patch(
         "pynguin.analyses.seeding.InitialPopulationProvider.__len__"

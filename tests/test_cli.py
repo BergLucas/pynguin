@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -18,39 +18,47 @@ import pytest
 
 import pynguin.configuration as config
 
-from pynguin.cli import _DANGER_ENV
-from pynguin.cli import _create_argument_parser
-from pynguin.cli import _expand_arguments_if_necessary
-from pynguin.cli import _setup_logging
+from pynguin.cli import _DANGER_ENV  # noqa: PLC2701
+from pynguin.cli import _create_argument_parser  # noqa: PLC2701
+from pynguin.cli import _expand_arguments_if_necessary  # noqa: PLC2701
+from pynguin.cli import _setup_logging  # noqa: PLC2701
 from pynguin.cli import main
 from pynguin.generator import ReturnCode
 
 
 def test_main_empty_argv():
-    with mock.patch("pynguin.cli.run_pynguin") as generator_mock:
+    with mock.patch("pynguin.cli.run_pynguin") as generator_mock:  # noqa: SIM117
         with mock.patch("pynguin.cli._create_argument_parser") as parser_mock:
             with mock.patch("pynguin.cli._setup_logging"):
                 with mock.patch("pynguin.cli._setup_output_path"):
                     with mock.patch.dict(os.environ, {_DANGER_ENV: "foobar"}):
                         generator_mock.return_value = ReturnCode.OK
                         parser = MagicMock()
+                        parser.parse_known_args.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                        )
                         parser_mock.return_value = parser
                         main()
-                        assert len(parser.parse_args.call_args[0][0]) > 0
+                        assert len(parser.parse_known_args.call_args[0][0]) > 0
 
 
 def test_main_with_argv():
-    with mock.patch("pynguin.cli.run_pynguin") as generator_mock:
+    with mock.patch("pynguin.cli.run_pynguin") as generator_mock:  # noqa: SIM117
         with mock.patch("pynguin.cli._create_argument_parser") as parser_mock:
             with mock.patch("pynguin.cli._setup_logging"):
                 with mock.patch("pynguin.cli._setup_output_path"):
                     with mock.patch.dict(os.environ, {_DANGER_ENV: "foobar"}):
                         generator_mock.return_value = ReturnCode.OK
                         parser = MagicMock()
+                        parser.parse_known_args.return_value = (
+                            MagicMock(),
+                            MagicMock(),
+                        )
                         parser_mock.return_value = parser
                         args = ["foo", "--help"]
                         main(args)
-                        assert parser.parse_args.call_args == call(args[1:])
+                        assert parser.parse_known_args.call_args == call(args[1:])
 
 
 def test_main_no_env_marker():
@@ -66,7 +74,7 @@ def test__create_argument_parser():
 def test__setup_logging_single_verbose_without_log_file():
     logging.shutdown()
     importlib.reload(logging)
-    _setup_logging(1, False)
+    _setup_logging(1, False)  # noqa: FBT003
     logger = logging.getLogger("")
     assert len(logger.handlers) == 1
     assert logger.level == logging.INFO
@@ -77,7 +85,7 @@ def test__setup_logging_single_verbose_without_log_file():
 def test__setup_logging_double_verbose_without_log_file():
     logging.shutdown()
     importlib.reload(logging)
-    _setup_logging(2, False)
+    _setup_logging(2, False)  # noqa: FBT003
     logger = logging.getLogger("")
     assert len(logger.handlers) == 1
     assert logger.level == logging.DEBUG
@@ -235,7 +243,7 @@ def test__expand_arguments_if_necessary(arguments, expected):
 
 
 def test_load_configuration_from_file(tmp_path):
-    config_file = Path(".").absolute()
+    config_file = Path().absolute()
     if config_file.name != "tests":
         config_file /= "tests"  # pragma: no cover
     config_file = config_file / "fixtures" / "test.conf"

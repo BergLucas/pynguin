@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -31,20 +31,22 @@ from pynguin.testcase.variablereference import StaticFieldReference
 from tests.fixtures.linecoverage.plus import Plus
 
 
-@pytest.fixture
+@pytest.fixture()
 def full_cover_plus_three_test():
-    """
-    Produces the following testcase:
-        def test_case_0():
-            int_0 = 3360
-            plus_0 = module_0.Plus()
-            assert plus_0.calculations == 0
-            var_0 = plus_0.plus_three(int_0)
-            assert var_0 == 3363
-            assert plus_0.calculations == 1
+    """Produces the following testcase.
+
+    def test_case_0():
+        int_0 = 3360
+        plus_0 = module_0.Plus()
+        assert plus_0.calculations == 0
+        var_0 = plus_0.plus_three(int_0)
+        assert var_0 == 3363
+        assert plus_0.calculations == 1.
     """
     cluster = generate_test_cluster("tests.fixtures.linecoverage.plus")
-    transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())
+    transformer = AstToTestCaseTransformer(
+        cluster, False, EmptyConstantProvider()  # noqa: FBT003
+    )
     transformer.visit(
         ast.parse(
             """def test_case_0():
@@ -87,21 +89,22 @@ def full_cover_plus_three_test():
     return test_case
 
 
-@pytest.fixture
+@pytest.fixture()
 def full_cover_plus_four_test():
-    """
-    Produces the following testcase:
-        def test_case_1():
-            int_0 = -3559
-            plus_0 = module_0.Plus()
-            assert plus_0.calculations == 0
-            var_0 = plus_0.plus_four(int_0)
-            assert var_0 == -3555
-            assert plus_0.calculations == 1
-    """
+    """Produces the following testcase.
 
+    def test_case_1():
+        int_0 = -3559
+        plus_0 = module_0.Plus()
+        assert plus_0.calculations == 0
+        var_0 = plus_0.plus_four(int_0)
+        assert var_0 == -3555
+        assert plus_0.calculations == 1.
+    """
     cluster = generate_test_cluster("tests.fixtures.linecoverage.plus")
-    transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())
+    transformer = AstToTestCaseTransformer(
+        cluster, False, EmptyConstantProvider()  # noqa: FBT003
+    )
     transformer.visit(
         ast.parse(
             """def test_case_0():
@@ -144,10 +147,12 @@ def full_cover_plus_four_test():
     return test_case
 
 
-@pytest.fixture
+@pytest.fixture()
 def partial_cover_use_bool_as_int():
     cluster = generate_test_cluster("tests.fixtures.linecoverage.plus")
-    transformer = AstToTestCaseTransformer(cluster, False, EmptyConstantProvider())
+    transformer = AstToTestCaseTransformer(
+        cluster, False, EmptyConstantProvider()  # noqa: FBT003
+    )
     transformer.visit(
         ast.parse(
             """def test_case_0():
@@ -214,7 +219,7 @@ def test_case_1():
     return test_suite
 
 
-@pytest.fixture
+@pytest.fixture()
 def full_cover_plus_testsuite(
     full_cover_plus_three_test, full_cover_plus_four_test
 ) -> tsc.TestSuiteChromosome:
@@ -226,7 +231,7 @@ def full_cover_plus_testsuite(
     return test_suite
 
 
-@pytest.fixture
+@pytest.fixture()
 def partial_cover_plus_testsuite(
     plus_test_with_float_assertion, plus_test_with_multiple_assertions
 ) -> tsc.TestSuiteChromosome:
@@ -238,7 +243,7 @@ def partial_cover_plus_testsuite(
     return test_suite
 
 
-@pytest.fixture
+@pytest.fixture()
 def no_cover_plus_testsuite(default_test_case) -> tsc.TestSuiteChromosome:
     test_suite = tsc.TestSuiteChromosome()
     test_suite.add_test_case_chromosome(tcc.TestCaseChromosome(default_test_case))
@@ -261,7 +266,11 @@ def no_cover_plus_testsuite(default_test_case) -> tsc.TestSuiteChromosome:
     ],
 )
 def test_assertion_detection_on_test_case(
-    module_name, test_case_name, expected_assertions, request
+    module_name,
+    test_case_name,
+    expected_assertions,
+    request,
+    default_statement_transformer,
 ):
     test_case = request.getfixturevalue(test_case_name)
     config.configuration.statistics_output.coverage_metrics = [
@@ -275,7 +284,7 @@ def test_assertion_detection_on_test_case(
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(AssertionExecutionObserver(tracer))
         result = executor.execute(test_case)
         assert result.execution_trace.executed_assertions
@@ -303,7 +312,7 @@ def test_assertion_detection_on_test_case(
     ],
 )
 def test_slicing_after_test_execution(
-    module_name, test_case_name, expected_lines, request
+    module_name, test_case_name, expected_lines, request, default_statement_transformer
 ):
     test_case = request.getfixturevalue(test_case_name)
     config.configuration.statistics_output.coverage_metrics = [
@@ -317,7 +326,7 @@ def test_slicing_after_test_execution(
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(AssertionExecutionObserver(tracer))
         result = executor.execute(test_case)
         assert result.execution_trace.executed_assertions
@@ -367,7 +376,11 @@ def test_slicing_after_test_execution(
     ],
 )
 def test_testsuite_assertion_checked_coverage_calculation(
-    module_name, test_suite_name, expected_coverage, request
+    module_name,
+    test_suite_name,
+    expected_coverage,
+    request,
+    default_statement_transformer,
 ):
     test_suite = request.getfixturevalue(test_suite_name)
     config.configuration.statistics_output.coverage_metrics = [
@@ -381,7 +394,7 @@ def test_testsuite_assertion_checked_coverage_calculation(
         module = importlib.import_module(module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
         executor.add_observer(AssertionExecutionObserver(tracer))
         ff = TestSuiteAssertionCheckedCoverageFunction(executor)
         assert ff.compute_coverage(test_suite) == pytest.approx(

@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019-2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -88,14 +88,6 @@ class Statement(abc.ABC):
 
         Returns:
             A deep clone of this statement  # noqa: DAR202
-        """
-
-    @abstractmethod
-    def accept(self, visitor: StatementVisitor) -> None:
-        """Accepts a visitor to visit this statement.
-
-        Args:
-            visitor: the statement visitor
         """
 
     @abstractmethod
@@ -263,154 +255,6 @@ class VariableCreatingStatement(Statement, abc.ABC):
         self.ret_val: vr.VariableReference = ret_val
 
 
-class StatementVisitor(abc.ABC):
-    """An abstract statement visitor."""
-
-    @abstractmethod
-    def visit_int_primitive_statement(self, stmt) -> None:
-        """Visit int primitive.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_float_primitive_statement(self, stmt) -> None:
-        """Visit float primitive.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_complex_primitive_statement(self, stmt) -> None:
-        """Visit complex primitive.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_string_primitive_statement(self, stmt) -> None:
-        """Visit string primitive.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_bytes_primitive_statement(self, stmt) -> None:
-        """Visit bytes primitive.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_boolean_primitive_statement(self, stmt) -> None:
-        """Visit boolean primitive.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_enum_statement(self, stmt) -> None:
-        """Visit enum.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_class_primitive_statement(self, stmt) -> None:
-        """Visit class primitive statement.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_none_statement(self, stmt) -> None:
-        """Visit none.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_constructor_statement(self, stmt) -> None:
-        """Visit constructor.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_method_statement(self, stmt) -> None:
-        """Visit method.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_function_statement(self, stmt) -> None:
-        """Visit function.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_field_statement(self, stmt) -> None:
-        """Visit field.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_assignment_statement(self, stmt) -> None:
-        """Visit assignment.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_list_statement(self, stmt) -> None:
-        """Visit list.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_set_statement(self, stmt) -> None:
-        """Visit set.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_tuple_statement(self, stmt) -> None:
-        """Visit tuple.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-    @abstractmethod
-    def visit_dict_statement(self, stmt) -> None:
-        """Visit dict.
-
-        Args:
-            stmt: the statement to visit
-        """
-
-
 class AssignmentStatement(Statement):
     """A statement that assigns the value of a variable to a reference.
 
@@ -466,9 +310,6 @@ class AssignmentStatement(Statement):
             self._lhs.clone(memo),
             self._rhs.clone(memo),
         )
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_assignment_statement(self)
 
     def accessible_object(self) -> gao.GenericAccessibleObject | None:  # noqa: D102
         return None
@@ -698,9 +539,6 @@ class ListStatement(NonDictCollection):
             [var.clone(memo) for var in self._elements],
         )
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_list_statement(self)
-
 
 class SetStatement(NonDictCollection):
     """Represents a set."""
@@ -729,9 +567,6 @@ class SetStatement(NonDictCollection):
             [var.clone(memo) for var in self._elements],
         )
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_set_statement(self)
-
 
 class TupleStatement(NonDictCollection):
     """Represents a tuple."""
@@ -759,9 +594,6 @@ class TupleStatement(NonDictCollection):
             self.ret_val.type,
             [var.clone(memo) for var in self._elements],
         )
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_tuple_statement(self)
 
     # No deletion or insertion on tuple
     # Maybe consider if structure of tuple is unknown?
@@ -837,9 +669,6 @@ class DictStatement(
             self.ret_val.type,
             [(var[0].clone(memo), var[1].clone(memo)) for var in self._elements],
         )
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_dict_statement(self)
 
     def structural_hash(  # noqa: D102
         self, memo: dict[vr.VariableReference, int]
@@ -950,9 +779,6 @@ class FieldStatement(VariableCreatingStatement):
         memo: dict[vr.VariableReference, vr.VariableReference],
     ) -> Statement:
         return FieldStatement(test_case, self._field, self._source.clone(memo))
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_field_statement(self)
 
     def get_variable_references(self) -> set[vr.VariableReference]:  # noqa: D102
         refs = {self.ret_val}
@@ -1259,9 +1085,6 @@ class ConstructorStatement(ParametrizedStatement):
             test_case, self.accessible_object(), self._clone_args(memo)
         )
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_constructor_statement(self)
-
     def accessible_object(self) -> gao.GenericConstructor:
         """The used constructor.
 
@@ -1374,9 +1197,6 @@ class MethodStatement(ParametrizedStatement):
             self._clone_args(memo),
         )
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_method_statement(self)
-
     def structural_hash(  # noqa: D102
         self, memo: dict[vr.VariableReference, int]
     ) -> int:
@@ -1422,9 +1242,6 @@ class FunctionStatement(ParametrizedStatement):
         return FunctionStatement(
             test_case, self.accessible_object(), self._clone_args(memo)
         )
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_function_statement(self)
 
     def __repr__(self) -> str:
         return (
@@ -1584,9 +1401,6 @@ class IntPrimitiveStatement(PrimitiveStatement[int]):
     def __str__(self) -> str:
         return f"{self._value}: int"
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_int_primitive_statement(self)
-
 
 class FloatPrimitiveStatement(PrimitiveStatement[float]):
     """Primitive Statement that creates a float."""
@@ -1647,9 +1461,6 @@ class FloatPrimitiveStatement(PrimitiveStatement[float]):
 
     def __str__(self) -> str:
         return f"{self._value}: float"
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_float_primitive_statement(self)
 
 
 class ComplexPrimitiveStatement(PrimitiveStatement[complex]):
@@ -1742,9 +1553,6 @@ class ComplexPrimitiveStatement(PrimitiveStatement[complex]):
     def __str__(self) -> str:
         return f"{self._value}: complex"
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_complex_primitive_statement(self)
-
 
 class StringPrimitiveStatement(PrimitiveStatement[str]):
     """Primitive Statement that creates a String."""
@@ -1834,9 +1642,6 @@ class StringPrimitiveStatement(PrimitiveStatement[str]):
 
     def __str__(self) -> str:
         return f"{self._value}: str"
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_string_primitive_statement(self)
 
 
 class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
@@ -1959,9 +1764,6 @@ class BytesPrimitiveStatement(PrimitiveStatement[bytes]):
     def __str__(self) -> str:
         return f"{self._value!r}: bytes"
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_bytes_primitive_statement(self)
-
 
 class BooleanPrimitiveStatement(PrimitiveStatement[bool]):
     """Primitive Statement that creates a boolean."""
@@ -2000,9 +1802,6 @@ class BooleanPrimitiveStatement(PrimitiveStatement[bool]):
 
     def __str__(self) -> str:
         return f"{self._value}: bool"
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_boolean_primitive_statement(self)
 
 
 class EnumPrimitiveStatement(PrimitiveStatement[int]):
@@ -2079,9 +1878,6 @@ class EnumPrimitiveStatement(PrimitiveStatement[int]):
     ) -> int:
         return hash((super().structural_hash(memo), self._generic_enum))
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_enum_statement(self)
-
 
 class ClassPrimitiveStatement(PrimitiveStatement[int]):
     """Primitive Statement that references a class."""
@@ -2139,9 +1935,6 @@ class ClassPrimitiveStatement(PrimitiveStatement[int]):
             other, ClassPrimitiveStatement
         )
 
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_class_primitive_statement(self)
-
 
 class NoneStatement(PrimitiveStatement[None]):
     """A statement serving as a None reference."""
@@ -2155,9 +1948,6 @@ class NoneStatement(PrimitiveStatement[None]):
         memo: dict[vr.VariableReference, vr.VariableReference],
     ) -> NoneStatement:
         return NoneStatement(test_case)
-
-    def accept(self, visitor: StatementVisitor) -> None:  # noqa: D102
-        visitor.visit_none_statement(self)
 
     def randomize_value(self) -> None:
         """Cannot randomize a value for None."""

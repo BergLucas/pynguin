@@ -1,6 +1,6 @@
 #  This file is part of Pynguin.
 #
-#  SPDX-FileCopyrightText: 2019–2023 Pynguin Contributors
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
 #
 #  SPDX-License-Identifier: MIT
 #
@@ -26,30 +26,30 @@ from pynguin.utils.generic.genericaccessibleobject import (
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def executor():
     return MagicMock(TestCaseExecutor)
 
 
-def test_generate_sequences(executor):
+def test_generate_sequences(executor, default_variable_manager):
     config.configuration.stopping.maximum_search_time = 1
     config.configuration.algorithm = config.Algorithm.RANDOM
     logger = MagicMock(Logger)
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, MagicMock(ModuleTestCluster)
+        executor, MagicMock(ModuleTestCluster), default_variable_manager
     ).get_search_algorithm()
     algorithm._logger = logger
     algorithm._find_objects_under_test = lambda x: x  # pragma: no cover
-    algorithm.generate_sequence = lambda t, f, e: None  # pragma: no cover
+    algorithm.generate_sequence = lambda _t, _f, _e: None  # pragma: no cover
     test_cases = algorithm.generate_tests()
     assert test_cases.size() == 0
 
 
-def test_generate_sequences_exception(executor):
-    def raise_exception(*args):
+def test_generate_sequences_exception(executor, default_variable_manager):
+    def raise_exception(*_):
         raise GenerationException("Exception Test")
 
-    def _combine_current_individual(*args):
+    def _combine_current_individual(*_):
         chromosome = MagicMock(tsc.TestSuiteChromosome)
         chromosome.get_fitness.return_value = 1.0
         return chromosome
@@ -58,7 +58,7 @@ def test_generate_sequences_exception(executor):
     config.configuration.algorithm = config.Algorithm.RANDOM
     logger = MagicMock(Logger)
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, MagicMock(ModuleTestCluster)
+        executor, MagicMock(ModuleTestCluster), default_variable_manager
     ).get_search_algorithm()
     algorithm._logger = logger
     algorithm._find_objects_under_test = lambda x: x  # pragma: no cover
@@ -68,11 +68,11 @@ def test_generate_sequences_exception(executor):
     assert "Generate test case failed with exception" in logger.method_calls[3].args[0]
 
 
-def test_random_test_cases_no_bounds(executor):
+def test_random_test_cases_no_bounds(executor, default_variable_manager):
     config.configuration.algorithm = config.Algorithm.RANDOM
     logger = MagicMock(Logger)
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, MagicMock(ModuleTestCluster)
+        executor, MagicMock(ModuleTestCluster), default_variable_manager
     ).get_search_algorithm()
     algorithm._logger = logger
     config.configuration.random.max_sequences_combined = 0
@@ -86,11 +86,11 @@ def test_random_test_cases_no_bounds(executor):
     assert 0 <= len(result) <= 2
 
 
-def test_random_test_cases_with_bounds(executor):
+def test_random_test_cases_with_bounds(executor, default_variable_manager):
     config.configuration.algorithm = config.Algorithm.RANDOM
     logger = MagicMock(Logger)
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, MagicMock(ModuleTestCluster)
+        executor, MagicMock(ModuleTestCluster), default_variable_manager
     ).get_search_algorithm()
     algorithm._logger = logger
     config.configuration.random.max_sequences_combined = 2
@@ -104,10 +104,10 @@ def test_random_test_cases_with_bounds(executor):
     assert 0 <= len(result) <= 1
 
 
-def test_random_public_method(executor):
+def test_random_public_method(executor, default_variable_manager):
     config.configuration.algorithm = config.Algorithm.RANDOM
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, MagicMock(ModuleTestCluster)
+        executor, MagicMock(ModuleTestCluster), default_variable_manager
     ).get_search_algorithm()
     out_0 = MagicMock(GenericCallableAccessibleObject)
     out_1 = MagicMock(GenericAccessibleObject)
@@ -115,11 +115,13 @@ def test_random_public_method(executor):
     outs = {out_0, out_1, out_2}
     assert isinstance(algorithm, RandomAlgorithm)
     result = algorithm._random_public_method(outs)
-    assert result == out_0 or result == out_2
+    assert result in {out_0, out_2}
 
 
 @pytest.mark.parametrize("has_exceptions", [pytest.param(True), pytest.param(False)])
-def test_generate_sequence(has_exceptions, executor, default_test_case):
+def test_generate_sequence(
+    has_exceptions, executor, default_test_case, default_variable_manager
+):
     config.configuration.algorithm = config.Algorithm.RANDOM
     exec_result = MagicMock(ExecutionResult)
     exec_result.has_test_exceptions.return_value = has_exceptions
@@ -127,11 +129,11 @@ def test_generate_sequence(has_exceptions, executor, default_test_case):
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.accessible_objects_under_test = set()
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, test_cluster
+        executor, test_cluster, default_variable_manager
     ).get_search_algorithm()
-    algorithm._random_public_method = lambda x: None  # pragma: no cover
+    algorithm._random_public_method = lambda _: None  # pragma: no cover
     default_test_case.add_statement(MagicMock(stmt.Statement, ret_val=MagicMock()))
-    algorithm._random_test_cases = lambda x: [default_test_case]  # pragma: no cover
+    algorithm._random_test_cases = lambda _: [default_test_case]  # pragma: no cover
     assert isinstance(algorithm, RandomAlgorithm)
     with pytest.raises(GenerationException):
         algorithm.generate_sequence(
@@ -140,15 +142,17 @@ def test_generate_sequence(has_exceptions, executor, default_test_case):
         )
 
 
-def test_generate_sequence_duplicate(executor, default_test_case):
+def test_generate_sequence_duplicate(
+    executor, default_test_case, default_variable_manager
+):
     config.configuration.algorithm = config.Algorithm.RANDOM
     test_cluster = MagicMock(ModuleTestCluster)
     test_cluster.accessible_objects_under_test = set()
     algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, test_cluster
+        executor, test_cluster, default_variable_manager
     ).get_search_algorithm()
-    algorithm._random_public_method = lambda x: None  # pragma: no cover
-    algorithm._random_test_cases = lambda x: [default_test_case]  # pragma: no cover
+    algorithm._random_public_method = lambda _: None  # pragma: no cover
+    algorithm._random_test_cases = lambda _: [default_test_case]  # pragma: no cover
     assert isinstance(algorithm, RandomAlgorithm)
     with pytest.raises(GenerationException):
         algorithm.generate_sequence(

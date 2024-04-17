@@ -12,7 +12,6 @@ import logging
 import math
 
 from abc import abstractmethod
-from copy import deepcopy
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
@@ -30,8 +29,6 @@ from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TypeInfo
-from pynguin.grammar.fuzzer import GrammarDerivationTree
-from pynguin.grammar.fuzzer import GrammarFuzzer
 from pynguin.utils import randomness
 from pynguin.utils.mutation_utils import alpha_exponent_insertion
 from pynguin.utils.orderedset import OrderedSet
@@ -1642,37 +1639,6 @@ class StringPrimitiveStatement(PrimitiveStatement[str]):
 
     def __str__(self) -> str:
         return f"{self._value}: str"
-
-
-class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
-    """Primitive Statement that creates a grammar based String."""
-
-    def __init__(  # noqa: D107
-        self,
-        test_case: tc.TestCase,
-        fuzzer: GrammarFuzzer,
-        derivation_tree: GrammarDerivationTree | None = None,
-    ) -> None:
-        if derivation_tree is None:
-            derivation_tree = fuzzer.create_tree()
-
-        self._derivation_tree = derivation_tree
-        self._fuzzer = fuzzer
-
-        super().__init__(test_case, str(derivation_tree), None)
-
-    def randomize_value(self) -> None:
-        self._fuzzer.mutate_tree(self._derivation_tree)
-        self._value = str(self._derivation_tree)
-
-    def clone(
-        self,
-        test_case: tc.TestCase,
-        memo: dict[vr.VariableReference, vr.VariableReference],
-    ) -> StringPrimitiveStatement:
-        return GrammarBasedStringPrimitiveStatement(
-            test_case, self._fuzzer, deepcopy(self._derivation_tree)
-        )
 
 
 class BytesPrimitiveStatement(PrimitiveStatement[bytes]):

@@ -583,32 +583,6 @@ class _PrimitiveTypeVisitor(TypeVisitor[bool]):
 is_primitive_type = _PrimitiveTypeVisitor()
 
 
-class _CsvFileLikeVisitor(TypeVisitor[bool]):
-    def visit_any_type(self, left: AnyType) -> bool:
-        return True
-
-    def visit_none_type(self, left: NoneType) -> bool:
-        return False
-
-    def visit_instance(self, left: Instance) -> bool:
-        try:
-            return issubclass(left.type.raw_type, io.TextIOBase)
-        except TypeError:
-            return False
-
-    def visit_tuple_type(self, left: TupleType) -> bool:
-        return False
-
-    def visit_union_type(self, left: UnionType) -> bool:
-        return any(left_elem.accept(self) for left_elem in left.items)
-
-    def visit_unsupported_type(self, left: Unsupported) -> bool:
-        raise NotImplementedError("This type shall not be used during runtime")
-
-
-accept_csv_file_like_object = _CsvFileLikeVisitor()
-
-
 class TypeInfo:
     """A small wrapper around type, i.e., classes.
 
@@ -908,10 +882,10 @@ class InferredSignature:
         )
     )
     # fmt: on
-    _SET_ELEMENT_FROM_ARGUMENT_TYPES_PATH: OrderedSet[
-        tuple[str, ...]
-    ] = OrderedSet(  # noqa: RUF009
-        [("add", "__call__"), ("remove", "__call__"), ("discard", "__call__")]
+    _SET_ELEMENT_FROM_ARGUMENT_TYPES_PATH: OrderedSet[tuple[str, ...]] = (
+        OrderedSet(  # noqa: RUF009
+            [("add", "__call__"), ("remove", "__call__"), ("discard", "__call__")]
+        )
     )
     # Nothing for tuple and dict.
     _EMPTY_SET: OrderedSet[tuple[str, ...]] = OrderedSet()  # noqa: RUF009

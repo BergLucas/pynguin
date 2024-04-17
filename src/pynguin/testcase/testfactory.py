@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import logging
 
 from abc import ABC
@@ -22,7 +21,6 @@ import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin.analyses.constants import ConstantProvider
-from pynguin.analyses.constants import DelegatingConstantProvider
 from pynguin.analyses.constants import EmptyConstantProvider
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import NONE_TYPE
@@ -32,14 +30,11 @@ from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
-from pynguin.analyses.typesystem import accept_csv_file_like_object
 from pynguin.analyses.typesystem import TypeVisitor
 from pynguin.analyses.typesystem import UnionType
 from pynguin.analyses.typesystem import Unsupported
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
-from pynguin.grammar.csv import create_csv_grammar
-from pynguin.grammar.fuzzer import GrammarFuzzer
 from pynguin.utils import randomness
 from pynguin.utils.exceptions import ConstructionFailedException
 from pynguin.utils.type_utils import is_optional_parameter
@@ -1584,95 +1579,6 @@ class TestFactory:  # noqa: PLR0904
 
         self._logger.debug("Satisfied %d parameters", len(parameters))
         return parameters
-
-    def _attempt_generation(
-        self,
-        test_case: tc.TestCase,
-        parameter_type: ProperType,
-        position: int,
-        recursion_depth: int,
-        *,
-        allow_none: bool,
-    ) -> vr.VariableReference | None:
-        if (
-            parameter_type.accept(accept_csv_file_like_object)
-            and randomness.next_float() < config.configuration.test_creation.csv_weight
-        ):
-            return self._create_csv_file_like_object(
-                test_case,
-                position,
-                recursion_depth,
-            )
-
-        # We only select a concrete type e.g. from a union, when we are forced to
-        # choose one.
-        concrete_parameter_type = self._test_cluster.select_concrete_type(
-            parameter_type
-        )
-
-        if isinstance(concrete_parameter_type, NoneType):
-            return self._create_none(test_case, position, recursion_depth)
-        # TODO(fk) think about creating collections/primitives from calls?
-        if concrete_parameter_type.accept(is_primitive_type):
-            return self._create_primitive(
-                test_case,
-                cast(Instance, concrete_parameter_type),
-                position,
-                recursion_depth,
-                constant_provider=self._constant_provider,
-            )
-        if concrete_parameter_type.accept(is_collection_type):
-            return self._create_collection(
-                test_case,
-                concrete_parameter_type,
-                position,
-                recursion_depth,
-            )
-        type_generators, only_any = self._test_cluster.get_generators_for(
-            concrete_parameter_type
-        )
-        if type_generators and not only_any:
-            type_generator = randomness.choice(type_generators)
-            return self.append_generic_accessible(
-                test_case,
-                type_generator,
-                position=position,
-                recursion_depth=recursion_depth + 1,
-                allow_none=allow_none,
-            )
-        return None
-
-    def _create_csv_file_like_object(
-        self,
-        test_case: tc.TestCase,
-        position: int,
-        recursion_depth: int,
-    ) -> vr.VariableReference:
-        type_info = test_case.test_cluster.type_system.alias_to_type_info("io.StringIO")
-
-        assert type_info is not None
-
-        accessible = gao.GenericConstructor(
-            type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO)
-        )
-
-        csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=3)
-
-        ref = self.add_primitive(
-            test_case,
-            stmt.GrammarBasedStringPrimitiveStatement(
-                test_case, GrammarFuzzer(csv_grammar, 0, 100)
-            ),
-            position,
-        )
-
-        statement = stmt.ConstructorStatement(
-            test_case, accessible, dict(initial_value=ref)
-        )
-        ret = test_case.add_variable_creating_statement(statement, position + 1)
-        ret.distance = recursion_depth
-
-        return ret
 
     def has_call_on_sut(self, test_case: tc.TestCase) -> bool:
         """Does the given test case have a call to the SUT?

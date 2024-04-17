@@ -28,8 +28,10 @@ def simple_test_case(constructor_mock, default_test_case):
     return default_test_case
 
 
-def test_test_case_to_ast_once(simple_test_case):
-    visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope("module"), set())
+def test_test_case_to_ast_once(simple_test_case, default_statement_transformer):
+    visitor = tc_to_ast.TestCaseToAstVisitor(
+        ns.NamingScope("module"), set(), default_statement_transformer
+    )
     simple_test_case.accept(visitor)
     simple_test_case.accept(visitor)
     assert (
@@ -42,8 +44,10 @@ def test_test_case_to_ast_once(simple_test_case):
     )
 
 
-def test_test_case_to_ast_twice(simple_test_case):
-    visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope("module"), set())
+def test_test_case_to_ast_twice(simple_test_case, default_statement_transformer):
+    visitor = tc_to_ast.TestCaseToAstVisitor(
+        ns.NamingScope("module"), set(), default_statement_transformer
+    )
     simple_test_case.accept(visitor)
     simple_test_case.accept(visitor)
     assert (
@@ -64,9 +68,13 @@ def test_test_case_to_ast_twice(simple_test_case):
     )
 
 
-def test_test_case_to_ast_module_aliases(simple_test_case):
+def test_test_case_to_ast_module_aliases(
+    simple_test_case, default_statement_transformer
+):
     module_aliases = ns.NamingScope("module")
-    visitor = tc_to_ast.TestCaseToAstVisitor(module_aliases, set())
+    visitor = tc_to_ast.TestCaseToAstVisitor(
+        module_aliases, set(), default_statement_transformer
+    )
     simple_test_case.accept(visitor)
     simple_test_case.accept(visitor)
     assert dict(module_aliases) == {"tests.fixtures.accessibles.accessible": "module_0"}

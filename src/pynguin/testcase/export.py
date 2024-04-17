@@ -12,6 +12,7 @@ import dataclasses
 from pathlib import Path
 
 import pynguin.ga.chromosomevisitor as cv
+import pynguin.testcase.statement_to_ast as stmt_to_ast
 import pynguin.testcase.testcase_to_ast as tc_to_ast
 import pynguin.utils.namingscope as ns
 
@@ -31,8 +32,16 @@ class _AstConversionResult:
 class PyTestChromosomeToAstVisitor(cv.ChromosomeVisitor):
     """Visits chromosomes and builds a module AST containing all visited test cases."""
 
-    def __init__(self) -> None:
-        """The module aliases are shared between test cases."""
+    def __init__(
+        self,
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
+    ) -> None:
+        """The module aliases are shared between test cases.
+
+        Args:
+            statement_transformer: The statement transformer to use
+        """
+        self._statement_transformer = statement_transformer
         self._module_aliases = ns.NamingScope("module")
         # Common modules (e.g. math) are not aliased.
         self._common_modules: set[str] = set()
@@ -66,6 +75,7 @@ class PyTestChromosomeToAstVisitor(cv.ChromosomeVisitor):
         visitor = tc_to_ast.TestCaseToAstVisitor(
             module_aliases=self._module_aliases,
             common_modules=self._common_modules,
+            statement_transformer=self._statement_transformer,
             exec_result=chromosome.get_last_execution_result(),
         )
         chromosome.test_case.accept(visitor)

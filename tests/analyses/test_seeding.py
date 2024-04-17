@@ -37,7 +37,9 @@ from pynguin.testcase import export
         ),
     ],
 )
-def test_parameter_mapping_roundtrip(testcase_seed, tmp_path):
+def test_parameter_mapping_roundtrip(
+    testcase_seed, tmp_path, default_statement_transformer
+):
     testcase_seed = (
         export._PYNGUIN_FILE_HEADER
         + """import tests.fixtures.grammar.parameters as module_0
@@ -54,7 +56,7 @@ def test_case_0():
     transformer.visit(ast.parse(testcase_seed))
     export_path = tmp_path / "export.py"
     chromosome = tcc.TestCaseChromosome(transformer.testcases[0])
-    exporter = export.PyTestChromosomeToAstVisitor()
+    exporter = export.PyTestChromosomeToAstVisitor(default_statement_transformer)
     chromosome.accept(exporter)
     export.save_module_to_file(exporter.to_module(), export_path)
     content = export_path.read_text(encoding="locale")

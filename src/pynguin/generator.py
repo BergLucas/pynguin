@@ -271,7 +271,10 @@ def _create_transformer_functions():
 
 
 def _setup_and_check() -> (
-    tuple[TestCaseExecutor, ModuleTestCluster, ConstantProvider] | None
+    tuple[
+        TestCaseExecutor, ModuleTestCluster, ConstantProvider, StatementToAstTransformer
+    ]
+    | None
 ):
     """Load the System Under Test (SUT) i.e. the module that is tested.
 
@@ -310,7 +313,7 @@ def _setup_and_check() -> (
     )
     _track_sut_data(tracer, test_cluster)
     _setup_random_number_generator()
-    return executor, test_cluster, wrapped_constant_provider
+    return executor, test_cluster, wrapped_constant_provider, statement_transformer
 
 
 def _track_sut_data(tracer: ExecutionTracer, test_cluster: ModuleTestCluster) -> None:
@@ -548,7 +551,7 @@ def add_additional_metrics(  # noqa: D103
 def _run() -> ReturnCode:
     if (setup_result := _setup_and_check()) is None:
         return ReturnCode.SETUP_FAILED
-    executor, test_cluster, constant_provider = setup_result
+    executor, test_cluster, constant_provider, statement_transformer = setup_result
     # traces slices for test cases after execution
     coverage_metrics = config.configuration.statistics_output.coverage_metrics
     if config.CoverageMetric.CHECKED in coverage_metrics:
@@ -583,7 +586,7 @@ def _run() -> ReturnCode:
         config.configuration.test_case_output.export_strategy
         == config.ExportStrategy.PY_TEST
     ):
-        _export_chromosome(generation_result)
+        _export_chromosome(generation_result, statement_transformer)
 
     if config.configuration.statistics_output.create_coverage_report:
         coverage_report = get_coverage_report(
@@ -782,12 +785,14 @@ def _collect_miscellaneous_statistics(test_cluster: ModuleTestCluster) -> None:
 
 def _export_chromosome(
     chromosome: chrom.Chromosome,
+    statement_transformer: StatementToAstTransformer,
     file_name_suffix: str = "",
 ) -> None:
     """Export the given chromosome.
 
     Args:
         chromosome: the chromosome to export.
+        statement_transformer: the statement transformer to use.
         file_name_suffix: Suffix that can be added to the file name to distinguish
             between different results e.g., failing and succeeding test cases.
 
@@ -799,7 +804,7 @@ def _export_chromosome(
         Path(config.configuration.test_case_output.output_path).resolve()
         / f"test_{module_name}{file_name_suffix}.py"
     )
-    export_visitor = export.PyTestChromosomeToAstVisitor()
+    export_visitor = export.PyTestChromosomeToAstVisitor(statement_transformer)
     chromosome.accept(export_visitor)
     export.save_module_to_file(
         export_visitor.to_module(),

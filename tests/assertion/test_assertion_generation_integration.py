@@ -81,7 +81,9 @@ def test_generate_mutation_assertions(
         gen = generator(TestCaseExecutor(tracer, default_statement_transformer))
         suite.accept(gen)
 
-        visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope(prefix="module"), set())
+        visitor = tc_to_ast.TestCaseToAstVisitor(
+            ns.NamingScope(prefix="module"), set(), default_statement_transformer
+        )
         test_case.accept(visitor)
         source = ast.unparse(
             ast.fix_missing_locations(
@@ -303,7 +305,9 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
 
         assert summary.get_metrics() == metrics
         assert gen._testing_created_mutants == mutants
-        visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope(prefix="module"), set())
+        visitor = tc_to_ast.TestCaseToAstVisitor(
+            ns.NamingScope(prefix="module"), set(), default_statement_transformer
+        )
         test_case.accept(visitor)
         source = ast.unparse(
             ast.fix_missing_locations(

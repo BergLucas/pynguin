@@ -10,7 +10,6 @@ import pynguin.utils.generic.genericaccessibleobject as gao
 from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
-from pynguin.analyses.typesystem import UnionType
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.grammar.csv import create_csv_grammar
@@ -58,7 +57,9 @@ def ast_transformer_hook(  # noqa: D103
 def statement_remover_hook(  # noqa: D103
     remover_functions: dict[type, UnusedPrimitiveOrCollectionStatementRemoverFunction]
 ) -> None:
-    remover_functions[GrammarBasedStringPrimitiveStatement] = remove_collection_or_primitive
+    remover_functions[GrammarBasedStringPrimitiveStatement] = (
+        remove_collection_or_primitive
+    )
 
 
 def variable_generator_hook(  # noqa: D103
@@ -78,9 +79,6 @@ class CsvSupportedTypes(SupportedTypes):
 
     def visit_tuple_type(self, left: TupleType) -> bool:  # noqa: D102
         return False
-
-    def visit_union_type(self, left: UnionType) -> bool:  # noqa: D102
-        return any(item.accept(self) for item in left.items)
 
 
 csv_supported_types = CsvSupportedTypes()

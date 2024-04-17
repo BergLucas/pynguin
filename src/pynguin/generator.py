@@ -38,6 +38,7 @@ import pynguin.ga.computations as ff
 import pynguin.ga.generationalgorithmfactory as gaf
 import pynguin.ga.postprocess as pp
 import pynguin.ga.testsuitechromosome as tsc
+import pynguin.testcase.testfactory as tf
 import pynguin.utils.statistics.statistics as stat
 
 from pynguin.analyses.constants import ConstantProvider
@@ -719,13 +720,42 @@ def _track_search_metrics(
     stat.current_individual(generation_result)
 
 
+def _create_variable_generators() -> dict:
+    variable_generators = {
+        tf.BuiltInVariableGenerator(): 1,
+    }
+
+    for plugin in config.plugins:
+        try:
+            variable_generator_hook = plugin.variable_generator_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a variable_generator_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            variable_generator_hook(variable_generators)
+        except BaseException:
+            logging.exception(
+                'Failed to run variable_generator_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+    return variable_generators
+
+
 def _instantiate_test_generation_strategy(
     executor: TestCaseExecutor,
     test_cluster: ModuleTestCluster,
     constant_provider: ConstantProvider,
 ) -> GenerationAlgorithm:
+    variable_manager = tf.VariableManager(_create_variable_generators())
     factory = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, test_cluster, constant_provider
+        executor, test_cluster, variable_manager, constant_provider
     )
     return factory.get_search_algorithm()
 

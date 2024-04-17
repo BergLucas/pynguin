@@ -53,7 +53,7 @@ from pynguin.testcase.execution import TestCaseExecutor
     ),
 )
 def test_integrate_algorithms(
-    module_name: str, algorithm, default_statement_transformer
+    module_name: str, algorithm, default_statement_transformer, default_variable_manager
 ):
     config.configuration.algorithm = algorithm
     config.configuration.stopping.maximum_iterations = 2
@@ -74,7 +74,7 @@ def test_integrate_algorithms(
         executor = TestCaseExecutor(tracer, default_statement_transformer)
         cluster = generate_test_cluster(module_name)
         search_algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-            executor, cluster
+            executor, cluster, default_variable_manager
         ).get_search_algorithm()
         search_algorithm._logger = logger
         test_cases = search_algorithm.generate_tests()
@@ -99,7 +99,7 @@ def test_integrate_algorithms(
     ],
 )
 def test_integrate_whole_suite_plus_archive(
-    module_name: str, default_statement_transformer
+    module_name: str, default_statement_transformer, default_variable_manager
 ):
     config.configuration.algorithm = config.Algorithm.WHOLE_SUITE
     config.configuration.stopping.maximum_iterations = 2
@@ -127,7 +127,7 @@ def test_integrate_whole_suite_plus_archive(
         executor = TestCaseExecutor(tracer, default_statement_transformer)
         cluster = generate_test_cluster(module_name)
         search_algorithm = gaf.TestSuiteGenerationAlgorithmFactory(
-            executor, cluster
+            executor, cluster, default_variable_manager
         ).get_search_algorithm()
         search_algorithm._logger = logger
         test_cases = search_algorithm.generate_tests()

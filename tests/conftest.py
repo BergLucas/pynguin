@@ -84,6 +84,15 @@ def default_variable_manager():
 
 
 @pytest.fixture()
+def default_variable_manager():
+    return tf.VariableManager(
+        {
+            tf.BuiltInVariableGenerator(): 1,
+        }
+    )
+
+
+@pytest.fixture()
 def default_test_case():
     return dtc.DefaultTestCase(ModuleTestCluster(0))
 

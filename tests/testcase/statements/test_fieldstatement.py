@@ -7,6 +7,7 @@
 from unittest.mock import MagicMock
 
 import pynguin.configuration as config
+import pynguin.ga.postprocess as pp
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
@@ -42,10 +43,12 @@ def test_constructor_statement_accept(
     test_case_mock, variable_reference_mock, field_mock
 ):
     statement = stmt.FieldStatement(test_case_mock, field_mock, variable_reference_mock)
-    visitor = MagicMock(stmt.StatementVisitor)
-    statement.accept(visitor)
-
-    visitor.visit_field_statement.assert_called_once_with(statement)
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {type(statement): remover_function}
+    )
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 def test_get_var_references(default_test_case, field_mock):

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import pynguin.ga.postprocess as pp
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
@@ -91,9 +92,12 @@ def test_accept(test_case_mock, variable_reference_mock):
     statement = AssignmentStatement(
         test_case_mock, variable_reference_mock, variable_reference_mock
     )
-    visitor = MagicMock()
-    statement.accept(visitor)
-    visitor.visit_assignment_statement.assert_called_with(statement)
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {type(statement): remover_function}
+    )
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 def test_accessible_object(assignment_statement):

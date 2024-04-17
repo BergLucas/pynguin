@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import pynguin.configuration as config
+import pynguin.ga.postprocess as pp
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.variablereference as vr
 
@@ -37,10 +38,12 @@ def test_constructor_statement_args(default_test_case, constructor_mock):
 
 def test_constructor_statement_accept(test_case_mock, constructor_mock):
     statement = stmt.ConstructorStatement(test_case_mock, constructor_mock)
-    visitor = MagicMock(stmt.StatementVisitor)
-    statement.accept(visitor)
-
-    visitor.visit_constructor_statement.assert_called_once_with(statement)
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {type(statement): remover_function}
+    )
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 def test_constructor_statement_hash(test_case_mock, constructor_mock):
@@ -477,10 +480,12 @@ def test_method_statement_accept(
     statement = stmt.MethodStatement(
         default_test_case, method_mock, variable_reference_mock
     )
-    visitor = MagicMock(stmt.StatementVisitor)
-    statement.accept(visitor)
-
-    visitor.visit_method_statement.assert_called_once_with(statement)
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {type(statement): remover_function}
+    )
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 def test_method_get_accessible_object(

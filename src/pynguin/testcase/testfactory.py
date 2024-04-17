@@ -17,7 +17,6 @@ from typing import cast
 
 import pynguin.configuration as config
 import pynguin.testcase.statement as stmt
-import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin.analyses.constants import ConstantProvider
@@ -42,6 +41,7 @@ from pynguin.utils.type_utils import is_optional_parameter
 
 if TYPE_CHECKING:
     import pynguin.testcase.testcase as tc
+    import pynguin.testcase.variablereference as vr
 
     from pynguin.analyses.module import ModuleTestCluster
     from pynguin.utils.orderedset import OrderedSet

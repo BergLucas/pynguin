@@ -54,7 +54,7 @@ class VariableManager:
 
     def __init__(
         self,
-        variable_generators: dict[AbstractVariableGenerator, int],
+        variable_generators: dict[AbstractVariableGenerator, float],
     ):
         """Initialize the variable manager.
 
@@ -168,7 +168,7 @@ class VariableManager:
             ConstructionFailedException: if construction of an object failed
         """
         population: list[AbstractVariableGenerator] = []
-        weights: list[int] = []
+        weights: list[float] = []
         for generator, weight in self._variable_generators.items():
             if parameter_type.accept(generator.supported_types):
                 population.append(generator)

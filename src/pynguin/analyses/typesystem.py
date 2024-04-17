@@ -581,29 +581,6 @@ class _PrimitiveTypeVisitor(TypeVisitor[bool]):
 is_primitive_type = _PrimitiveTypeVisitor()
 
 
-class _TensorLikeTypeVisitor(TypeVisitor[bool]):
-    def visit_any_type(self, left: AnyType) -> bool:
-        return True
-
-    def visit_none_type(self, left: NoneType) -> bool:
-        return False
-
-    def visit_instance(self, left: Instance) -> bool:
-        return left.type.raw_type is list
-
-    def visit_tuple_type(self, left: TupleType) -> bool:
-        return False
-
-    def visit_union_type(self, left: UnionType) -> bool:
-        return any(item.accept(self) for item in left.items)
-
-    def visit_unsupported_type(self, left: Unsupported) -> bool:
-        raise NotImplementedError("This type shall not be used during runtime")
-
-
-is_tensor_like = _TensorLikeTypeVisitor()
-
-
 class TypeInfo:
     """A small wrapper around type, i.e., classes.
 

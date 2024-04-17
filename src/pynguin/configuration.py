@@ -420,10 +420,6 @@ class TestCreationConfiguration:
     """Weight to use Any as parameter type during test generation.
     Expects values > 0."""
 
-    tensor_weight: float = 0
-    """Weight to use a tensor as parameter type during test generation.
-    Expects values [0,1]."""
-
     original_type_weight: float = 5
     """Weight to use the originally annotated type as parameter type during test
     generation. Expects values > 0."""

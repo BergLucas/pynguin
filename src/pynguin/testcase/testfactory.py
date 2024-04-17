@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import math
 
 from abc import ABC
 from abc import abstractmethod
@@ -35,7 +34,6 @@ from pynguin.analyses.typesystem import UnionType
 from pynguin.analyses.typesystem import Unsupported
 from pynguin.analyses.typesystem import is_collection_type
 from pynguin.analyses.typesystem import is_primitive_type
-from pynguin.analyses.typesystem import is_tensor_like
 from pynguin.utils import randomness
 from pynguin.utils.exceptions import ConstructionFailedException
 from pynguin.utils.type_utils import is_optional_parameter

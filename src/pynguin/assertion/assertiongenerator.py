@@ -329,6 +329,10 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
                 mutation_controller.tracer, plain_executor.statement_transformer
             )
 
+        self._mutation_executor.add_remote_observer(
+            ato.RemoteAssertionVerificationObserver()
+        )
+
         self._mutation_controller = mutation_controller
 
         # Some debug information

@@ -9,6 +9,8 @@ import dataclasses
 import enum
 import time
 
+from types import ModuleType
+
 from pynguin.utils.statistics.runtimevariable import RuntimeVariable
 
 
@@ -648,3 +650,5 @@ configuration = Configuration(
     module_name="",
     test_case_output=TestCaseOutputConfiguration(output_path=""),
 )
+
+plugins: list[ModuleType] = []

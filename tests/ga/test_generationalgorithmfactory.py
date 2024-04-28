@@ -32,9 +32,13 @@ from pynguin.utils.exceptions import ConfigurationException
 
 
 @pytest.fixture()
-def algorithm_factory() -> gaf.TestSuiteGenerationAlgorithmFactory:
+def algorithm_factory(
+    default_variable_manager,
+) -> gaf.TestSuiteGenerationAlgorithmFactory:
     return gaf.TestSuiteGenerationAlgorithmFactory(
-        MagicMock(TestCaseExecutor), MagicMock(ModuleTestCluster)
+        MagicMock(TestCaseExecutor),
+        MagicMock(ModuleTestCluster),
+        default_variable_manager,
     )
 
 

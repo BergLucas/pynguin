@@ -320,14 +320,14 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
 
         if config.configuration.subprocess:
             self._mutation_executor: ex.TestCaseExecutor = (
-                ex.SubprocessTestCaseExecutor(mutation_controller.tracer)
+                ex.SubprocessTestCaseExecutor(
+                    mutation_controller.tracer, plain_executor.statement_transformer
+                )
             )
         else:
-            self._mutation_executor = ex.TestCaseExecutor(mutation_controller.tracer)
-
-        self._mutation_executor.add_remote_observer(
-            ato.RemoteAssertionVerificationObserver()
-        )
+            self._mutation_executor = ex.TestCaseExecutor(
+                mutation_controller.tracer, plain_executor.statement_transformer
+            )
 
         self._mutation_controller = mutation_controller
 

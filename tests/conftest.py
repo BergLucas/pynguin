@@ -24,6 +24,7 @@ import pynguin.configuration as config
 import pynguin.testcase.defaulttestcase as dtc
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.testcase as tc
+import pynguin.testcase.testfactory as tf
 import pynguin.testcase.variablereference as vr
 import pynguin.utils.generic.genericaccessibleobject as gao
 import pynguin.utils.statistics.statistics as stat
@@ -39,6 +40,8 @@ from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import NoneType
 from pynguin.analyses.typesystem import TypeInfo
 from pynguin.analyses.typesystem import TypeSystem
+from pynguin.testcase.statement_to_ast import BUILTIN_TRANSFORMER_FUNCTIONS
+from pynguin.testcase.statement_to_ast import StatementToAstTransformer
 from pynguin.utils.generic.genericaccessibleobject import GenericConstructor
 from pynguin.utils.generic.genericaccessibleobject import GenericField
 from pynguin.utils.generic.genericaccessibleobject import GenericFunction
@@ -72,8 +75,31 @@ def test_case_mock():
 
 
 @pytest.fixture()
+def default_variable_manager():
+    return tf.VariableManager(
+        {
+            tf.BuiltInVariableGenerator(): 1,
+        }
+    )
+
+
+@pytest.fixture()
+def default_variable_manager():
+    return tf.VariableManager(
+        {
+            tf.BuiltInVariableGenerator(): 1,
+        }
+    )
+
+
+@pytest.fixture()
 def default_test_case():
     return dtc.DefaultTestCase(ModuleTestCluster(0))
+
+
+@pytest.fixture()
+def default_statement_transformer():
+    return StatementToAstTransformer(BUILTIN_TRANSFORMER_FUNCTIONS)
 
 
 @pytest.fixture()

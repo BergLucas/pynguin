@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import pynguin.configuration as config
+import pynguin.ga.postprocess as pp
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.testcase as tc
 import pynguin.testcase.variablereference as vr
@@ -138,52 +139,50 @@ def test_primitive_statement_clone(statement_type, default_test_case, value):
 
 
 @pytest.mark.parametrize(
-    "statement_type,value,visitor_method",
+    "statement_type,value",
     [
         (
             stmt.IntPrimitiveStatement,
             42,
-            "visit_int_primitive_statement",
         ),
         (
             stmt.FloatPrimitiveStatement,
             2.1,
-            "visit_float_primitive_statement",
         ),
         (
             stmt.StringPrimitiveStatement,
             "foo",
-            "visit_string_primitive_statement",
         ),
         (
             stmt.BytesPrimitiveStatement,
             b"foo",
-            "visit_bytes_primitive_statement",
         ),
         (
             stmt.BooleanPrimitiveStatement,
             True,
-            "visit_boolean_primitive_statement",
         ),
         (
             stmt.ComplexPrimitiveStatement,
             4 + 1j,
-            "visit_complex_primitive_statement",
         ),
         (
             stmt.ClassPrimitiveStatement,
             0,
-            "visit_class_primitive_statement",
         ),
     ],
 )
 def test_primitive_statement_accept(
-    statement_type, default_test_case, value, visitor_method
+    statement_type,
+    default_test_case,
+    value,
 ):
     stmt = statement_type(default_test_case, value)
-    visitor = MagicMock()
-    stmt.accept(visitor)
-    getattr(visitor, visitor_method).assert_called_once_with(stmt)
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {statement_type: remover_function}
+    )
+    primitive_remover.delete_statements_indexes([stmt])
+    remover_function.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -640,9 +639,12 @@ def test_enum_statement_hash(test_case_mock):
 def test_enum_statement_accept(test_case_mock):
     enum_ = MagicMock(names=["FOO"])
     statement = stmt.EnumPrimitiveStatement(test_case_mock, enum_)
-    visitor = MagicMock()
-    statement.accept(visitor)
-    visitor.visit_enum_statement.assert_called_once()
+    remover_function = MagicMock()
+    primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+        {type(statement): remover_function}
+    )
+    primitive_remover.delete_statements_indexes([statement])
+    remover_function.assert_called_once()
 
 
 def test_class_statement_delta(default_test_case):

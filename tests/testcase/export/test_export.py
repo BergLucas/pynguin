@@ -7,9 +7,9 @@
 from pynguin.testcase import export
 
 
-def test_export_sequence(exportable_test_case, tmp_path):
+def test_export_sequence(exportable_test_case, tmp_path, default_statement_transformer):
     path = tmp_path / "generated.py"
-    exporter = export.PyTestChromosomeToAstVisitor()
+    exporter = export.PyTestChromosomeToAstVisitor(default_statement_transformer)
     exportable_test_case.accept(exporter)
     exportable_test_case.accept(exporter)
     export.save_module_to_file(exporter.to_module(), path)
@@ -41,10 +41,12 @@ def test_case_1():
 
 
 def test_export_sequence_expected_exception(
-    exportable_test_case_with_expected_exception, tmp_path
+    exportable_test_case_with_expected_exception,
+    tmp_path,
+    default_statement_transformer,
 ):
     path = tmp_path / "generated_with_expected_exception.py"
-    exporter = export.PyTestChromosomeToAstVisitor()
+    exporter = export.PyTestChromosomeToAstVisitor(default_statement_transformer)
     exportable_test_case_with_expected_exception.accept(exporter)
     export.save_module_to_file(exporter.to_module(), path)
     assert (
@@ -63,10 +65,12 @@ def test_case_0():
 
 
 def test_export_sequence_unexpected_exception(
-    exportable_test_case_with_unexpected_exception, tmp_path
+    exportable_test_case_with_unexpected_exception,
+    tmp_path,
+    default_statement_transformer,
 ):
     path = tmp_path / "generated_with_unexpected_exception.py"
-    exporter = export.PyTestChromosomeToAstVisitor()
+    exporter = export.PyTestChromosomeToAstVisitor(default_statement_transformer)
     exportable_test_case_with_unexpected_exception.accept(exporter)
     export.save_module_to_file(exporter.to_module(), path)
     assert (

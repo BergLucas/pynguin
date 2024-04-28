@@ -29,8 +29,10 @@ def test_property_chromosome_factory(mosa_strategy):
     assert mosa_strategy.chromosome_factory == factory
 
 
-def test_property_executor(mosa_strategy):
-    executor = TestCaseExecutor(MagicMock(ExecutionTracer))
+def test_property_executor(mosa_strategy, default_statement_transformer):
+    executor = TestCaseExecutor(
+        MagicMock(ExecutionTracer), default_statement_transformer
+    )
     mosa_strategy.executor = executor
     assert mosa_strategy.executor == executor
 

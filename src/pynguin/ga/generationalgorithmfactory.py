@@ -161,6 +161,7 @@ class TestSuiteGenerationAlgorithmFactory(
         self,
         executor: AbstractTestCaseExecutor,
         test_cluster: ModuleTestCluster,
+        variable_manager: tf.VariableManager,
         constant_provider: ConstantProvider | None = None,
     ):
         """Initializes the factory.
@@ -168,12 +169,14 @@ class TestSuiteGenerationAlgorithmFactory(
         Args:
             executor: The test case executor to be used
             test_cluster: The test cluster
+            variable_manager: The variable manager
             constant_provider: An optional constant provider from seeding
         """
         if config.configuration.type_inference.type_tracing:
             executor = TypeTracingTestCaseExecutor(executor, test_cluster)
         self._executor = executor
         self._test_cluster = test_cluster
+        self._variable_manager = variable_manager
         if constant_provider is None:
             constant_provider = EmptyConstantProvider()
         self._constant_provider: ConstantProvider = constant_provider
@@ -442,10 +445,11 @@ class TestSuiteGenerationAlgorithmFactory(
             )
         return self._test_cluster
 
-    @staticmethod
     def _get_test_factory(
-        strategy: GenerationAlgorithm, constant_provider: ConstantProvider
+        self, strategy: GenerationAlgorithm, constant_provider: ConstantProvider
     ):
         return tf.TestFactory(
-            strategy.test_cluster, constant_provider=constant_provider
+            self._variable_manager,
+            strategy.test_cluster,
+            constant_provider=constant_provider,
         )

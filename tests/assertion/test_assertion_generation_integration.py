@@ -53,7 +53,9 @@ str_1 = human_0.get_name()""",
         ),
     ],
 )
-def test_generate_mutation_assertions(generator, expected_result):
+def test_generate_mutation_assertions(
+    generator, expected_result, default_statement_transformer
+):
     config.configuration.module_name = "tests.fixtures.examples.assertions"
     module_name = config.configuration.module_name
     tracer = ExecutionTracer()
@@ -91,12 +93,18 @@ def test_generate_mutation_assertions(generator, expected_result):
             mutation_controller = ag.InstrumentedMutationController(
                 mutant_generator, module_ast, module, mutation_tracer
             )
-            gen = generator(TestCaseExecutor(tracer), mutation_controller)
+            gen = generator(
+                TestCaseExecutor(tracer, default_statement_transformer),
+                mutation_controller,
+            )
         else:
-            gen = generator(TestCaseExecutor(tracer))
+            gen = generator(TestCaseExecutor(tracer, default_statement_transformer))
+
         suite.accept(gen)
 
-        visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope(prefix="module"), set())
+        visitor = tc_to_ast.TestCaseToAstVisitor(
+            ns.NamingScope(prefix="module"), set(), default_statement_transformer
+        )
         test_case.accept(visitor)
         source = ast.unparse(
             ast.fix_missing_locations(
@@ -281,6 +289,7 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
     metrics,
     killed,
     timeout,
+    default_statement_transformer,
 ):
     config.configuration.module_name = module
     module_name = config.configuration.module_name
@@ -310,7 +319,9 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
             mutant_generator, module_ast, module_type, mutation_tracer, testing=True
         )
         gen = ag.MutationAnalysisAssertionGenerator(
-            TestCaseExecutor(tracer), mutation_controller, testing=True
+            TestCaseExecutor(tracer, default_statement_transformer),
+            mutation_controller,
+            testing=True,
         )
         suite.accept(gen)
 
@@ -327,7 +338,9 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
 
         assert summary.get_metrics() == metrics
         assert mutation_controller._testing_created_mutants == mutants
-        visitor = tc_to_ast.TestCaseToAstVisitor(ns.NamingScope(prefix="module"), set())
+        visitor = tc_to_ast.TestCaseToAstVisitor(
+            ns.NamingScope(prefix="module"), set(), default_statement_transformer
+        )
         test_case.accept(visitor)
         source = ast.unparse(
             ast.fix_missing_locations(

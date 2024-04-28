@@ -42,6 +42,7 @@ import pynguin.ga.computations as ff
 import pynguin.ga.generationalgorithmfactory as gaf
 import pynguin.ga.postprocess as pp
 import pynguin.ga.testsuitechromosome as tsc
+import pynguin.testcase.testfactory as tf
 import pynguin.utils.statistics.statistics as stat
 
 from pynguin.analyses.constants import ConstantProvider
@@ -60,6 +61,8 @@ from pynguin.testcase import export
 from pynguin.testcase.execution import RemoteAssertionExecutionObserver
 from pynguin.testcase.execution import SubprocessTestCaseExecutor
 from pynguin.testcase.execution import TestCaseExecutor
+from pynguin.testcase.statement_to_ast import BUILTIN_TRANSFORMER_FUNCTIONS
+from pynguin.testcase.statement_to_ast import StatementToAstTransformer
 from pynguin.utils import randomness
 from pynguin.utils.exceptions import ConfigurationException
 from pynguin.utils.report import get_coverage_report
@@ -70,6 +73,7 @@ from pynguin.utils.statistics.runtimevariable import RuntimeVariable
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from types import ModuleType
 
     from pynguin.analyses.module import ModuleTestCluster
     from pynguin.assertion.mutation_analysis.operators.base import MutationOperator
@@ -100,6 +104,15 @@ def set_configuration(configuration: config.Configuration) -> None:
         configuration: The configuration to use.
     """
     config.configuration = configuration
+
+
+def set_plugins(plugins: list[ModuleType]) -> None:
+    """Sets the plugins to use.
+
+    Args:
+        plugins: The plugins to use.
+    """
+    config.plugins = plugins
 
 
 def run_pynguin() -> ReturnCode:
@@ -240,8 +253,37 @@ def _setup_constant_seeding() -> (
     return wrapped_provider, dynamic_constant_provider
 
 
+def _create_transformer_functions():
+    transformer_functions = dict(BUILTIN_TRANSFORMER_FUNCTIONS)
+
+    for plugin in config.plugins:
+        try:
+            ast_transformer_hook = plugin.ast_transformer_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have an ast_transformer_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            ast_transformer_hook(transformer_functions)
+        except BaseException:
+            logging.exception(
+                'Failed to run ast_transformer_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+    return transformer_functions
+
+
 def _setup_and_check() -> (
-    tuple[TestCaseExecutor, ModuleTestCluster, ConstantProvider] | None
+    tuple[
+        TestCaseExecutor, ModuleTestCluster, ConstantProvider, StatementToAstTransformer
+    ]
+    | None
 ):
     """Load the System Under Test (SUT) i.e. the module that is tested.
 
@@ -268,23 +310,28 @@ def _setup_and_check() -> (
         return None
     tracer.enable()
 
+    statement_transformer = StatementToAstTransformer(_create_transformer_functions())
+
     # Make alias to make the following lines shorter...
     stop = config.configuration.stopping
     if config.configuration.subprocess:
         executor: TestCaseExecutor = SubprocessTestCaseExecutor(
             tracer,
+            statement_transformer,
             maximum_test_execution_timeout=stop.maximum_test_execution_timeout,
             test_execution_time_per_statement=stop.test_execution_time_per_statement,
         )
     else:
         executor = TestCaseExecutor(
             tracer,
+            statement_transformer,
             maximum_test_execution_timeout=stop.maximum_test_execution_timeout,
             test_execution_time_per_statement=stop.test_execution_time_per_statement,
         )
+
     _track_sut_data(tracer, test_cluster)
     _setup_random_number_generator()
-    return executor, test_cluster, wrapped_constant_provider
+    return executor, test_cluster, wrapped_constant_provider, statement_transformer
 
 
 def _track_sut_data(tracer: ExecutionTracer, test_cluster: ModuleTestCluster) -> None:
@@ -522,7 +569,7 @@ def add_additional_metrics(  # noqa: D103
 def _run() -> ReturnCode:
     if (setup_result := _setup_and_check()) is None:
         return ReturnCode.SETUP_FAILED
-    executor, test_cluster, constant_provider = setup_result
+    executor, test_cluster, constant_provider, statement_transformer = setup_result
     # traces slices for test cases after execution
     coverage_metrics = config.configuration.statistics_output.coverage_metrics
     if config.CoverageMetric.CHECKED in coverage_metrics:
@@ -558,7 +605,7 @@ def _run() -> ReturnCode:
         config.configuration.test_case_output.export_strategy
         == config.ExportStrategy.PY_TEST
     ):
-        _export_chromosome(generation_result)
+        _export_chromosome(generation_result, statement_transformer)
 
     if config.configuration.statistics_output.create_coverage_report:
         coverage_report = get_coverage_report(
@@ -585,12 +632,41 @@ def _run() -> ReturnCode:
     return ReturnCode.OK
 
 
+def _create_remover_functions():
+    remover_functions = dict(pp.BUILTIN_REMOVER_FUNCTIONS)
+
+    for plugin in config.plugins:
+        try:
+            statement_remover_hook = plugin.statement_remover_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a statement_remover_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            statement_remover_hook(remover_functions)
+        except BaseException:
+            logging.exception(
+                'Failed to run statement_remover_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+    return remover_functions
+
+
 def _remove_statements_after_exceptions(generation_result):
     truncation = pp.ExceptionTruncation()
     generation_result.accept(truncation)
     if config.configuration.test_case_output.post_process:
+        primitive_remover = pp.UnusedPrimitiveOrCollectionStatementRemover(
+            _create_remover_functions()
+        )
         unused_primitives_removal = pp.TestCasePostProcessor(
-            [pp.UnusedStatementsTestCaseVisitor()]
+            [pp.UnusedStatementsTestCaseVisitor(primitive_remover)]
         )
         generation_result.accept(unused_primitives_removal)
         # TODO(fk) add more postprocessing stuff.
@@ -723,13 +799,42 @@ def _track_search_metrics(
     stat.current_individual(generation_result)
 
 
+def _create_variable_generators() -> dict:
+    variable_generators = {
+        tf.BuiltInVariableGenerator(): 5,
+    }
+
+    for plugin in config.plugins:
+        try:
+            variable_generator_hook = plugin.variable_generator_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a variable_generator_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            variable_generator_hook(variable_generators)
+        except BaseException:
+            logging.exception(
+                'Failed to run variable_generator_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+    return variable_generators
+
+
 def _instantiate_test_generation_strategy(
     executor: TestCaseExecutor,
     test_cluster: ModuleTestCluster,
     constant_provider: ConstantProvider,
 ) -> GenerationAlgorithm:
+    variable_manager = tf.VariableManager(_create_variable_generators())
     factory = gaf.TestSuiteGenerationAlgorithmFactory(
-        executor, test_cluster, constant_provider
+        executor, test_cluster, variable_manager, constant_provider
     )
     return factory.get_search_algorithm()
 
@@ -756,12 +861,14 @@ def _collect_miscellaneous_statistics(test_cluster: ModuleTestCluster) -> None:
 
 def _export_chromosome(
     chromosome: chrom.Chromosome,
+    statement_transformer: StatementToAstTransformer,
     file_name_suffix: str = "",
 ) -> None:
     """Export the given chromosome.
 
     Args:
         chromosome: the chromosome to export.
+        statement_transformer: the statement transformer to use.
         file_name_suffix: Suffix that can be added to the file name to distinguish
             between different results e.g., failing and succeeding test cases.
 
@@ -773,7 +880,7 @@ def _export_chromosome(
         Path(config.configuration.test_case_output.output_path).resolve()
         / f"test_{module_name}{file_name_suffix}.py"
     )
-    export_visitor = export.PyTestChromosomeToAstVisitor()
+    export_visitor = export.PyTestChromosomeToAstVisitor(statement_transformer)
     chromosome.accept(export_visitor)
     export.save_module_to_file(
         export_visitor.to_module(),

@@ -36,6 +36,7 @@ class TestCaseToAstVisitor(TestCaseVisitor):
         self,
         module_aliases: ns.NamingScope,
         common_modules: set[str],
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
         exec_result: ex.ExecutionResult | None = None,
     ) -> None:
         """The module aliases are shared between test cases.
@@ -43,11 +44,13 @@ class TestCaseToAstVisitor(TestCaseVisitor):
         Args:
             module_aliases: The aliases for used modules
             common_modules: The names of common modules that are not aliased
+            statement_transformer: The statement transformer to use
             exec_result: An optional execution result for the test case.
         """
         self._module_aliases: ns.NamingScope = module_aliases
         # Common modules (e.g. math) are not aliased.
         self._common_modules: set[str] = common_modules
+        self._statement_transformer = statement_transformer
         self._exec_result = exec_result
         self._test_case_ast: list[stmt] = []
         self._is_failing_test: bool = False
@@ -71,16 +74,20 @@ class TestCaseToAstVisitor(TestCaseVisitor):
                 # If a statement causes an exception and defines a new name, we don't
                 # actually want to create that name, as it will not be stored anyway.
                 store_call_return = False
-            statement_visitor = stmt_to_ast.StatementToAstVisitor(
-                self._module_aliases, variables, store_call_return=store_call_return
+
+            statement_node = self._statement_transformer.transform(
+                statement,
+                self._module_aliases,
+                variables,
+                store_call_return=store_call_return,
             )
-            statement.accept(statement_visitor)
+
             # TODO(fk) better way. Nest visitors?
             assertion_visitor = ata.PyTestAssertionToAstVisitor(
                 variables,
                 self._module_aliases,
                 self._common_modules,
-                statement_node=statement_visitor.ast_node,
+                statement_node=statement_node,
             )
             for assertion in statement.assertions:
                 if self.__should_assertion_be_generated(assertion, statement):

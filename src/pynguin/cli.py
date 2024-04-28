@@ -11,10 +11,16 @@ line.
 """
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import sys
 
+from argparse import SUPPRESS
+from argparse import Action
+from argparse import ArgumentError
+from argparse import ArgumentParser
+from argparse import Namespace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,17 +35,76 @@ import pynguin.configuration as config
 from pynguin.__version__ import __version__
 from pynguin.generator import run_pynguin
 from pynguin.generator import set_configuration
+from pynguin.generator import set_plugins
 
 
 if TYPE_CHECKING:
-    import argparse
+    from collections.abc import Sequence
+    from types import ModuleType
 
 
-def _create_argument_parser() -> argparse.ArgumentParser:
+class _PynguinHelpAction(Action):
+    """Custom help action for the argument parser."""
+
+    def __init__(
+        self,
+        option_strings: Sequence[str],
+        dest: str = SUPPRESS,
+        default: str = SUPPRESS,
+        help: str | None = None,  # noqa: A002
+    ):
+        """Initialize the help action.
+
+        Args:
+            option_strings: The option strings
+            dest: The destination
+            default: The default value
+            help: The help message
+        """
+        super().__init__(
+            option_strings=option_strings,
+            dest=dest,
+            default=default,
+            nargs=0,
+            help=help,
+        )
+
+    def __call__(
+        self,
+        parser: ArgumentParser,
+        namespace: Namespace,
+        values: str | Sequence[str] | None,
+        option_string: str | None = None,
+    ):
+        """Print help message and exit.
+
+        Args:
+            parser: The argument parser
+            namespace: The namespace
+            values: The values
+            option_string: The option string
+        """
+        _setup_logging(namespace.verbosity, namespace.no_rich)
+        plugins = _setup_plugins(namespace.plugins)
+        _run_plugins_parser_hook(plugins, parser)
+        parser.print_help()
+        parser.exit()
+
+
+def _create_argument_parser() -> ArgumentParser:
     parser = simple_parsing.ArgumentParser(
         add_option_string_dash_variants=simple_parsing.DashVariant.UNDERSCORE_AND_DASH,
         description="Pynguin is an automatic unit test generation framework for Python",
         fromfile_prefix_chars="@",
+        add_help=False,
+    )
+    parser.register("action", "help", _PynguinHelpAction)
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        default=SUPPRESS,
+        help="show this help message and exit",
     )
     parser.add_argument(
         "--version", action="version", version="%(prog)s " + __version__
@@ -60,6 +125,15 @@ def _create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Don't use rich for nicer consoler output.",
+    )
+    parser.add_argument(
+        "--plugins",
+        metavar="list",
+        type=str,
+        nargs="+",
+        dest="plugins",
+        default=[],
+        help="List of plugins to load",
     )
     parser.add_arguments(config.Configuration, dest="config")
 
@@ -145,6 +219,99 @@ def _setup_logging(verbosity: int, no_rich: bool) -> Console | None:  # noqa: FB
     return console
 
 
+def _setup_plugins(plugin_paths: list[str]) -> list[ModuleType]:
+    plugins: list[ModuleType] = []
+
+    for plugin_path in plugin_paths:
+        plugin_path_object = Path(plugin_path).resolve()
+
+        if plugin_path_object.is_file():
+            plugin_module_name = plugin_path_object.stem
+            sys.path.insert(0, plugin_path_object.parent.as_posix())
+        elif plugin_path_object.is_dir():
+            plugin_module_name = plugin_path_object.name
+            sys.path.insert(0, plugin_path_object.parent.as_posix())
+        else:
+            plugin_module_name = plugin_path
+
+        try:
+            plugin_module = importlib.import_module(plugin_module_name)
+        except ImportError:
+            logging.exception(
+                "Could not load plugin %s",
+                plugin_path,
+            )
+            continue
+
+        try:
+            plugin_name = plugin_module.NAME
+        except AttributeError:
+            logging.exception(
+                "Plugin %s does not have a NAME attribute",
+                plugin_path,
+            )
+            continue
+
+        plugins.append(plugin_module)
+        logging.info(
+            'Loaded plugin "%s" (%s)',
+            plugin_name,
+            plugin_path,
+        )
+
+    return plugins
+
+
+def _run_plugins_parser_hook(plugins: list[ModuleType], parser: ArgumentParser) -> None:
+    for plugin in plugins:
+        try:
+            parser_hook = plugin.parser_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a parser_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            parser_hook(parser)
+        except BaseException:
+            logging.exception(
+                'Failed to run parser_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+        logging.info('Added plugin "%s" arguments', plugin.NAME)
+
+
+def _run_plugins_configuration_hook(
+    plugins: list[ModuleType], plugin_config: Namespace
+) -> None:
+    for plugin in plugins:
+        try:
+            configuration_hook = plugin.configuration_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a configuration_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            configuration_hook(plugin_config)
+        except BaseException:
+            logging.exception(
+                'Failed to run configuration_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+        logging.info('Configured plugin "%s"', plugin.NAME)
+
+
 # People may wipe their disk, so we give them a heads-up.
 _DANGER_ENV = "PYNGUIN_DANGER_AWARE"
 
@@ -181,13 +348,40 @@ to see why this happens and what you must do to prevent it."""
     argv = _expand_arguments_if_necessary(argv[1:])
 
     argument_parser = _create_argument_parser()
-    parsed = argument_parser.parse_args(argv)
-
-    _setup_output_path(parsed.config.test_case_output.output_path)
+    parsed, plugin_argv = argument_parser.parse_known_args(argv)
 
     console = _setup_logging(parsed.verbosity, parsed.no_rich)
 
+    plugins = _setup_plugins(parsed.plugins)
+
+    # We need another parser because using the previous one with only the remaining
+    # arguments would not work because of the required arguments
+    plugin_parser = ArgumentParser(add_help=False, exit_on_error=False)
+
+    _run_plugins_parser_hook(plugins, plugin_parser)
+
+    # Run the parser hooks on the argument parser for a better help message
+    logging.root.disabled = True
+    _run_plugins_parser_hook(plugins, argument_parser)
+    logging.root.disabled = False
+
+    try:
+        plugin_parsed, remaining_argv = plugin_parser.parse_known_args(plugin_argv)
+    except ArgumentError as error:
+        argument_parser.error(str(error))
+        return -1
+
+    if remaining_argv:
+        msg = "unrecognized arguments: %s"
+        argument_parser.error(msg % " ".join(remaining_argv))
+        return -1
+
+    _run_plugins_configuration_hook(plugins, plugin_parsed)
+
+    _setup_output_path(parsed.config.test_case_output.output_path)
+
     set_configuration(parsed.config)
+    set_plugins(plugins)
     if console is not None:
         with console.status("Running Pynguin..."):
             return run_pynguin().value

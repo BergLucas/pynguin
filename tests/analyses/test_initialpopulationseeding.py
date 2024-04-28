@@ -239,12 +239,20 @@ def test_seeded_test_case_factory_with_delegation(
 )
 @mock.patch("pynguin.testcase.execution.TestCaseExecutor")
 def test_algorithm_generation_factory(
-    mock_class, constant_provider, dummy_test_cluster, enabled, fac_type
+    mock_class,
+    constant_provider,
+    dummy_test_cluster,
+    enabled,
+    fac_type,
+    default_variable_manager,
 ):
     config.configuration.seeding.initial_population_seeding = enabled
     config.configuration.algorithm = config.Algorithm.MIO
     tsfactory = TestSuiteGenerationAlgorithmFactory(
-        mock_class.return_value, dummy_test_cluster, constant_provider
+        mock_class.return_value,
+        dummy_test_cluster,
+        default_variable_manager,
+        constant_provider,
     )
     with mock.patch(
         "pynguin.analyses.seeding.InitialPopulationProvider.__len__"

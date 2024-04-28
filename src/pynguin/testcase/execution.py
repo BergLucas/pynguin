@@ -90,12 +90,18 @@ class ExecutionContext:
     of the statements that should be executed.
     """
 
-    def __init__(self, module_provider: ModuleProvider) -> None:
+    def __init__(
+        self,
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
+        module_provider: ModuleProvider,
+    ) -> None:
         """Create a new execution context.
 
         Args:
+            statement_transformer: The used statement transformer
             module_provider: The used module provider
         """
+        self._statement_transformer = statement_transformer
         self._module_provider = module_provider
         self._local_namespace: dict[str, Any] = {}
         self._variable_names = ns.NamingScope()
@@ -189,11 +195,11 @@ class ExecutionContext:
         Returns:
             An ast node.
         """
-        stmt_visitor = stmt_to_ast.StatementToAstVisitor(
-            self._module_aliases, self._variable_names
+        return self._statement_transformer.transform(
+            statement,
+            self._module_aliases,
+            self._variable_names,
         )
-        statement.accept(stmt_visitor)
-        return stmt_visitor.ast_node
 
     def node_for_assertion(
         self, assertion: ass.Assertion, statement_node: ast.stmt
@@ -888,6 +894,15 @@ class AbstractTestCaseExecutor(abc.ABC):
             The used module provider
         """
 
+    @property
+    @abstractmethod
+    def statement_transformer(self) -> stmt_to_ast.StatementToAstTransformer:
+        """The used statement transformer.
+
+        Returns:
+            The statement transformer
+        """
+
     @abstractmethod
     def add_observer(self, observer: ExecutionObserver) -> None:
         """Add an execution observer.
@@ -979,6 +994,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
     def __init__(
         self,
         tracer: ExecutionTracer,
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
         module_provider: ModuleProvider | None = None,
         maximum_test_execution_timeout: int = 5,
         test_execution_time_per_statement: int = 1,
@@ -987,6 +1003,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
 
         Args:
             tracer: the execution tracer
+            statement_transformer: The used statement transformer
             module_provider: The used module provider
             maximum_test_execution_timeout: The minimum timeout time (in seconds)
                 before a test case execution times out.
@@ -1001,6 +1018,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
         self._maximum_test_execution_timeout = maximum_test_execution_timeout
         self._test_execution_time_per_statement = test_execution_time_per_statement
 
+        self._statement_transformer = statement_transformer
         self._module_provider = (
             module_provider if module_provider is not None else ModuleProvider()
         )
@@ -1032,6 +1050,12 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
     @property
     def module_provider(self) -> ModuleProvider:  # noqa: D102
         return self._module_provider
+
+    @property
+    def statement_transformer(  # noqa: D102
+        self,
+    ) -> stmt_to_ast.StatementToAstTransformer:
+        return self._statement_transformer
 
     def add_observer(self, observer: ExecutionObserver) -> None:  # noqa: D102
         self._observers.append(observer)
@@ -1124,7 +1148,7 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
     def _execute_test_case(self, test_case: tc.TestCase, result_queue: Queue) -> None:
         self._before_test_case_execution(test_case)
         result = ExecutionResult()
-        exec_ctx = ExecutionContext(self._module_provider)
+        exec_ctx = ExecutionContext(self._statement_transformer, self._module_provider)
         self._tracer.current_thread_identifier = threading.current_thread().ident
         for idx, statement in enumerate(test_case.statements):
             ast_node = self._before_statement_execution(statement, exec_ctx)
@@ -1257,6 +1281,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
     def __init__(
         self,
         tracer: ExecutionTracer,
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
         module_provider: ModuleProvider | None = None,
         maximum_test_execution_timeout: int = 5,
         test_execution_time_per_statement: int = 1,
@@ -1265,6 +1290,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
 
         Args:
             tracer: the execution tracer
+            statement_transformer: The used statement transformer
             module_provider: The used module provider
             maximum_test_execution_timeout: The minimum timeout time (in seconds)
                 before a test case execution times out.
@@ -1273,6 +1299,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
         """
         super().__init__(
             tracer,
+            statement_transformer,
             module_provider,
             maximum_test_execution_timeout,
             test_execution_time_per_statement,
@@ -1290,6 +1317,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
 
         args = (
             self._tracer,
+            self._statement_transformer,
             self._module_provider,
             self._maximum_test_execution_timeout,
             self._test_execution_time_per_statement,
@@ -1370,6 +1398,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
 
         args = (
             self._tracer,
+            self._statement_transformer,
             self._module_provider,
             self._maximum_test_execution_timeout,
             self._test_execution_time_per_statement,
@@ -1439,11 +1468,10 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
 
         return results
 
-    @staticmethod
-    def _save_crash_tests(test_case: tc.TestCase) -> None:
+    def _save_crash_tests(self, test_case: tc.TestCase) -> None:
         chromosome = tcc.TestCaseChromosome(test_case)
 
-        exporter = export.PyTestChromosomeToAstVisitor()
+        exporter = export.PyTestChromosomeToAstVisitor(self._statement_transformer)
 
         chromosome.accept(exporter)
 
@@ -1457,6 +1485,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
     @staticmethod
     def _execute_test_case_in_subprocess(  # noqa: PLR0917
         tracer: ExecutionTracer,
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
         module_provider: ModuleProvider,
         maximum_test_execution_timeout: int,
         test_execution_time_per_statement: int,
@@ -1468,6 +1497,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
 
         executor = TestCaseExecutor(
             tracer,
+            statement_transformer,
             module_provider,
             maximum_test_execution_timeout,
             test_execution_time_per_statement,
@@ -1485,6 +1515,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
     @staticmethod
     def _execute_test_cases_in_subprocess(  # noqa: PLR0917
         tracer: ExecutionTracer,
+        statement_transformer: stmt_to_ast.StatementToAstTransformer,
         module_provider: ModuleProvider,
         maximum_test_execution_timeout: int,
         test_execution_time_per_statement: int,
@@ -1496,6 +1527,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
 
         executor = TestCaseExecutor(
             tracer,
+            statement_transformer,
             module_provider,
             maximum_test_execution_timeout,
             test_execution_time_per_statement,
@@ -1620,6 +1652,12 @@ class TypeTracingTestCaseExecutor(AbstractTestCaseExecutor):
     def module_provider(self) -> ModuleProvider:  # noqa: D102
         return self._delegate.module_provider
 
+    @property
+    def statement_transformer(  # noqa: D102
+        self,
+    ) -> stmt_to_ast.StatementToAstTransformer:
+        return self._delegate.statement_transformer
+
     def add_observer(self, observer: ExecutionObserver) -> None:  # noqa: D102
         self._delegate.add_observer(observer)
 
@@ -1735,10 +1773,7 @@ class RemoteTypeTracingObserver(RemoteExecutionObserver):
             ).inferred_signature
             modified.args = modified_args
             modified.ret_val = statement.ret_val
-            visitor = stmt_to_ast.StatementToAstVisitor(
-                exec_ctx.module_aliases, exec_ctx.variable_names
-            )
-            modified.accept(visitor)
+            ast_node = exec_ctx.node_for_statement(modified)
             # Now we know the names.
             for (name, modified_param), original_param in real_params.items():
                 old = exec_ctx.get_reference_value(original_param)
@@ -1758,7 +1793,7 @@ class RemoteTypeTracingObserver(RemoteExecutionObserver):
                 self._local_state.proxies[(statement.get_position(), name)] = proxy
                 exec_ctx.replace_variable_value(modified_param, proxy)
 
-            return visitor.ast_node
+            return ast_node
         return node
 
     def after_statement_execution(  # noqa: D102

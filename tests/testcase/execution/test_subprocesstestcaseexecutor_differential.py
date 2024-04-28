@@ -10,7 +10,7 @@ from pynguin.testcase.execution import TestCaseExecutor
 from pynguin.utils.orderedset import OrderedSet
 
 
-def test_simple_execution(short_test_case):
+def test_simple_execution(short_test_case, default_statement_transformer):
     config.configuration.module_name = "tests.fixtures.accessibles.accessible"
 
     tracer = ExecutionTracer()
@@ -23,7 +23,7 @@ def test_simple_execution(short_test_case):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
 
-        executor = TestCaseExecutor(tracer)
+        executor = TestCaseExecutor(tracer, default_statement_transformer)
 
         result = executor.execute(short_test_case)
 
@@ -31,7 +31,9 @@ def test_simple_execution(short_test_case):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
 
-        subprocess_executor = SubprocessTestCaseExecutor(subprocess_tracer)
+        subprocess_executor = SubprocessTestCaseExecutor(
+            subprocess_tracer, default_statement_transformer
+        )
 
         subprocess_result = subprocess_executor.execute(short_test_case)
 

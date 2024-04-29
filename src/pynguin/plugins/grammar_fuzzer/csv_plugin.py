@@ -10,6 +10,7 @@ import pynguin.utils.generic.genericaccessibleobject as gao
 from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
+from pynguin.analyses.typesystem import TypeSystem
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
@@ -44,6 +45,10 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_weight  # noqa: PLW0603
     csv_weight = plugin_config.csv_weight
+
+
+def type_system_hook(type_system: TypeSystem) -> None:  # noqa: D103
+    type_system.to_type_info(io.TextIOBase)
 
 
 def ast_transformer_hook(  # noqa: D103

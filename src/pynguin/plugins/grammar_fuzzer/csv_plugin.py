@@ -12,9 +12,9 @@ from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
-from pynguin.grammar.csv import create_csv_grammar
-from pynguin.grammar.fuzzer import GrammarDerivationTree
-from pynguin.grammar.fuzzer import GrammarFuzzer
+from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
+from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarDerivationTree
+from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarFuzzer
 from pynguin.testcase.statement import StringPrimitiveStatement
 from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
 from pynguin.testcase.statement_to_ast import transform_primitive_statement
@@ -129,7 +129,7 @@ class CsvVariableGenerator(AbstractVariableGenerator):
 
 
 class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
-    """Primitive Statement that creates a grammar based String."""
+    """Primitive Statement that creates a grammar_fuzzer based String."""
 
     def __init__(  # noqa: D107
         self,

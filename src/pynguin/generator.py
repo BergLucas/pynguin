@@ -76,6 +76,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from pynguin.analyses.module import ModuleTestCluster
+    from pynguin.analyses.module import TypeSystem
     from pynguin.assertion.mutation_analysis.operators.base import MutationOperator
     from pynguin.ga.algorithms.generationalgorithm import GenerationAlgorithm
 
@@ -133,6 +134,28 @@ def run_pynguin() -> ReturnCode:
         _LOGGER.info("Stop Pynguin Test Generation…")
 
 
+def _handle_plugins_types(type_system: TypeSystem) -> None:
+    for plugin in config.plugins:
+        try:
+            type_system_hook = plugin.type_system_hook
+        except AttributeError:
+            logging.debug(
+                'Plugin "%s" does not have a type_system_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            type_system_hook(type_system)
+        except BaseException:
+            logging.exception(
+                'Failed to run type_system_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+
 def _setup_test_cluster() -> ModuleTestCluster | None:
     test_cluster = generate_test_cluster(
         config.configuration.module_name,
@@ -141,6 +164,9 @@ def _setup_test_cluster() -> ModuleTestCluster | None:
     if test_cluster.num_accessible_objects_under_test() == 0:
         _LOGGER.error("SUT contains nothing we can test.")
         return None
+
+    _handle_plugins_types(test_cluster.type_system)
+
     return test_cluster
 
 

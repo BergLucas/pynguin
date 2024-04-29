@@ -307,42 +307,42 @@ class AbstractVariableGenerator(ABC):
         """
 
 
-class AnySupportedTypes(SupportedTypes):
+class _AnySupportedTypes(SupportedTypes):
     """A supported types visitor that only accepts the Any type."""
 
-    def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
+    def visit_any_type(self, left: AnyType) -> bool:
         return True
 
-    def visit_instance(self, left: Instance) -> bool:  # noqa: D102
+    def visit_instance(self, left: Instance) -> bool:
         return False
 
-    def visit_tuple_type(self, left: TupleType) -> bool:  # noqa: D102
+    def visit_tuple_type(self, left: TupleType) -> bool:
         return False
 
 
-any_supported_types = AnySupportedTypes()
+any_supported_types = _AnySupportedTypes()
 
 
-class AllSupportedTypes(SupportedTypes):
+class _AllSupportedTypes(SupportedTypes):
     """A supported types visitor that accepts all types."""
 
-    def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
+    def visit_any_type(self, left: AnyType) -> bool:
         return True
 
-    def visit_none_type(self, left: NoneType) -> bool:  # noqa: D102
+    def visit_none_type(self, left: NoneType) -> bool:
         return True
 
-    def visit_instance(self, left: Instance) -> bool:  # noqa: D102
+    def visit_instance(self, left: Instance) -> bool:
         return True
 
-    def visit_tuple_type(self, left: TupleType) -> bool:  # noqa: D102
+    def visit_tuple_type(self, left: TupleType) -> bool:
         return True
 
-    def visit_union_type(self, left: UnionType) -> bool:  # noqa: D102
+    def visit_union_type(self, left: UnionType) -> bool:
         return True
 
 
-all_supported_types = AllSupportedTypes()
+all_supported_types = _AllSupportedTypes()
 
 
 class BuiltInVariableGenerator(AbstractVariableGenerator):

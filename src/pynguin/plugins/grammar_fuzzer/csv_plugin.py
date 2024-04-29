@@ -19,10 +19,9 @@ from pynguin.testcase.statement import StringPrimitiveStatement
 from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
 from pynguin.testcase.statement_to_ast import transform_primitive_statement
 from pynguin.testcase.testcase import TestCase
-from pynguin.testcase.testfactory import AbstractVariableGenerator
 from pynguin.testcase.testfactory import SupportedTypes
 from pynguin.testcase.testfactory import TestFactory
-from pynguin.testcase.testfactory import any_supported_types
+from pynguin.testcase.testfactory import VariableGenerator
 from pynguin.testcase.variablereference import VariableReference
 from pynguin.utils import randomness
 
@@ -30,7 +29,6 @@ from pynguin.utils import randomness
 NAME = "csv_fuzzer"
 
 csv_weight: float = 0.0
-csv_any_weight: float = 0.0
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -41,20 +39,11 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         help="""Weight to use a CSV file-like object as parameter type during test generation.
         Expects values > 0""",  # noqa: E501
     )
-    parser.add_argument(
-        "--csv_any_weight",
-        type=float,
-        default=10.0,
-        help="""Weight to use a CSV file-like object as parameter type when there is an Any type during test generation.
-        Expects values > 0""",  # noqa: E501
-    )
 
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_weight  # noqa: PLW0603
-    global csv_any_weight  # noqa: PLW0603
     csv_weight = plugin_config.csv_weight
-    csv_any_weight = plugin_config.csv_any_weight
 
 
 def ast_transformer_hook(  # noqa: D103
@@ -74,38 +63,9 @@ def statement_remover_hook(  # noqa: D103
 
 
 def variable_generator_hook(  # noqa: D103
-    generators: dict[AbstractVariableGenerator, float]
+    generators: dict[VariableGenerator, float]
 ) -> None:
     generators[CsvVariableGenerator()] = csv_weight
-    generators[CsvAnyVariableGenerator()] = csv_any_weight
-
-
-def generate_variable(  # noqa: D103
-    test_factory: TestFactory, test_case: TestCase, position: int, recursion_depth: int
-) -> VariableReference | None:
-    type_info = test_case.test_cluster.type_system.alias_to_type_info("io.StringIO")
-
-    assert type_info is not None
-
-    accessible = gao.GenericConstructor(
-        type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO)
-    )
-
-    csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=3)
-
-    ref = test_factory.add_primitive(
-        test_case,
-        GrammarBasedStringPrimitiveStatement(
-            test_case, GrammarFuzzer(csv_grammar, 0, 100)
-        ),
-        position,
-    )
-
-    statement = stmt.ConstructorStatement(test_case, accessible, {"initial_value": ref})
-    ret = test_case.add_variable_creating_statement(statement, position + 1)
-    ret.distance = recursion_depth
-
-    return ret
 
 
 class _CsvSupportedTypes(SupportedTypes):
@@ -124,7 +84,7 @@ class _CsvSupportedTypes(SupportedTypes):
 csv_supported_types = _CsvSupportedTypes()
 
 
-class CsvVariableGenerator(AbstractVariableGenerator):
+class CsvVariableGenerator(VariableGenerator):
     """A CSV variable generator."""
 
     @property
@@ -141,27 +101,31 @@ class CsvVariableGenerator(AbstractVariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
-        return generate_variable(test_factory, test_case, position, recursion_depth)
+        type_info = test_case.test_cluster.type_system.alias_to_type_info("io.StringIO")
 
+        assert type_info is not None
 
-class CsvAnyVariableGenerator(AbstractVariableGenerator):
-    """A CSV variable generator that only generates variables for Any types."""
+        accessible = gao.GenericConstructor(
+            type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO)
+        )
 
-    @property
-    def supported_types(self) -> SupportedTypes:  # noqa: D102
-        return any_supported_types
+        csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=3)
 
-    def generate_variable(  # noqa: D102
-        self,
-        test_factory: TestFactory,
-        test_case: TestCase,
-        parameter_type: ProperType,
-        position: int,
-        recursion_depth: int,
-        *,
-        allow_none: bool,
-    ) -> VariableReference | None:
-        return generate_variable(test_factory, test_case, position, recursion_depth)
+        ref = test_factory.add_primitive(
+            test_case,
+            GrammarBasedStringPrimitiveStatement(
+                test_case, GrammarFuzzer(csv_grammar, 0, 100)
+            ),
+            position,
+        )
+
+        statement = stmt.ConstructorStatement(
+            test_case, accessible, {"initial_value": ref}
+        )
+        ret = test_case.add_variable_creating_statement(statement, position + 1)
+        ret.distance = recursion_depth
+
+        return ret
 
 
 class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):

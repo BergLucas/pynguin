@@ -310,13 +310,13 @@ class AbstractVariableGenerator(ABC):
 class AnySupportedTypes(SupportedTypes):
     """A supported types visitor that only accepts the Any type."""
 
-    def visit_any_type(self, left: AnyType) -> bool:
+    def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
         return True
 
-    def visit_instance(self, left: Instance) -> bool:
+    def visit_instance(self, left: Instance) -> bool:  # noqa: D102
         return False
 
-    def visit_tuple_type(self, left: TupleType) -> bool:
+    def visit_tuple_type(self, left: TupleType) -> bool:  # noqa: D102
         return False
 
 
@@ -326,19 +326,19 @@ any_supported_types = AnySupportedTypes()
 class AllSupportedTypes(SupportedTypes):
     """A supported types visitor that accepts all types."""
 
-    def visit_any_type(self, left: AnyType) -> bool:
+    def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
         return True
 
-    def visit_none_type(self, left: NoneType) -> bool:
+    def visit_none_type(self, left: NoneType) -> bool:  # noqa: D102
         return True
 
-    def visit_instance(self, left: Instance) -> bool:
+    def visit_instance(self, left: Instance) -> bool:  # noqa: D102
         return True
 
-    def visit_tuple_type(self, left: TupleType) -> bool:
+    def visit_tuple_type(self, left: TupleType) -> bool:  # noqa: D102
         return True
 
-    def visit_union_type(self, left: UnionType) -> bool:
+    def visit_union_type(self, left: UnionType) -> bool:  # noqa: D102
         return True
 
 

@@ -21,10 +21,9 @@ from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarFuzzer
 from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
 from pynguin.testcase.statement_to_ast import transform_primitive_statement
 from pynguin.testcase.testcase import TestCase
-from pynguin.testcase.testfactory import AbstractVariableGenerator
 from pynguin.testcase.testfactory import SupportedTypes
 from pynguin.testcase.testfactory import TestFactory
-from pynguin.testcase.testfactory import any_supported_types
+from pynguin.testcase.testfactory import VariableGenerator
 from pynguin.testcase.variablereference import VariableReference
 from pynguin.utils import randomness
 
@@ -32,7 +31,6 @@ from pynguin.utils import randomness
 NAME = "pandas_dataframe_fuzzer"
 
 pandas_dataframe_weight: float = 0.0
-pandas_dataframe_any_weight: float = 0.0
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -43,20 +41,11 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         help="""Weight to use a Pandas dataframe object as parameter type
         during test generation. Expects values > 0""",
     )
-    parser.add_argument(
-        "--dataframe_any_weight",
-        type=float,
-        default=0.0,
-        help="""Weight to use a Pandas dataframe object as parameter type
-        when there is an Any type during test generation. Expects values > 0""",
-    )
 
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global pandas_dataframe_weight  # noqa: PLW0603
-    global pandas_dataframe_any_weight  # noqa: PLW0603
     pandas_dataframe_weight = plugin_config.pandas_dataframe_weight
-    pandas_dataframe_any_weight = plugin_config.pandas_dataframe_any_weight
 
 
 def ast_transformer_hook(  # noqa: D103
@@ -76,65 +65,9 @@ def statement_remover_hook(  # noqa: D103
 
 
 def variable_generator_hook(  # noqa: D103
-    generators: dict[AbstractVariableGenerator, float]
+    generators: dict[VariableGenerator, float]
 ) -> None:
     generators[PandasVariableGenerator()] = pandas_dataframe_weight
-    generators[PandasAnyVariableGenerator()] = pandas_dataframe_any_weight
-
-
-def generate_variable(  # noqa: D103
-    test_factory: TestFactory,
-    test_case: TestCase,
-    position: int,
-    recursion_depth: int,
-) -> VariableReference | None:
-    string_io_type_info = test_case.test_cluster.type_system.alias_to_type_info(
-        "io.StringIO"
-    )
-
-    assert string_io_type_info is not None
-
-    string_io_accessible = gao.GenericConstructor(
-        string_io_type_info,
-        test_case.test_cluster.type_system.infer_type_info(io.StringIO),
-    )
-
-    csv_grammar = create_csv_grammar(
-        randomness.next_int(1, 10),
-        min_field_length=3,
-    )
-
-    ref = test_factory.add_primitive(
-        test_case,
-        GrammarBasedStringPrimitiveStatement(
-            test_case, GrammarFuzzer(csv_grammar, 0, 100)
-        ),
-        position,
-    )
-
-    string_io_statement = stmt.ConstructorStatement(
-        test_case, string_io_accessible, {"initial_value": ref}
-    )
-    string_io_ret = test_case.add_variable_creating_statement(
-        string_io_statement, position + 1
-    )
-    string_io_ret.distance = recursion_depth
-
-    dataframe_accessible = gao.GenericFunction(
-        pd.read_csv,
-        test_case.test_cluster.type_system.infer_type_info(pd.read_csv),
-    )
-
-    dataframe_statement = stmt.FunctionStatement(
-        test_case, dataframe_accessible, {"filepath_or_buffer": string_io_ret}
-    )
-
-    dataframe_ret = test_case.add_variable_creating_statement(
-        dataframe_statement, position + 2
-    )
-    dataframe_ret.distance = recursion_depth
-
-    return dataframe_ret
 
 
 class _PandasDataframeSupportedTypes(SupportedTypes):
@@ -153,7 +86,7 @@ class _PandasDataframeSupportedTypes(SupportedTypes):
 pandas_dataframe_supported_types = _PandasDataframeSupportedTypes()
 
 
-class PandasVariableGenerator(AbstractVariableGenerator):
+class PandasVariableGenerator(VariableGenerator):
     """A Pandas dataframes variable generator."""
 
     @property
@@ -170,24 +103,50 @@ class PandasVariableGenerator(AbstractVariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
-        return generate_variable(test_factory, test_case, position, recursion_depth)
+        string_io_type_info = test_case.test_cluster.type_system.alias_to_type_info(
+            "io.StringIO"
+        )
 
+        assert string_io_type_info is not None
 
-class PandasAnyVariableGenerator(AbstractVariableGenerator):
-    """A Pandas dataframes variable generator that only generates variables for Any types."""  # noqa: E501
+        string_io_accessible = gao.GenericConstructor(
+            string_io_type_info,
+            test_case.test_cluster.type_system.infer_type_info(io.StringIO),
+        )
 
-    @property
-    def supported_types(self) -> SupportedTypes:  # noqa: D102
-        return any_supported_types
+        csv_grammar = create_csv_grammar(
+            randomness.next_int(1, 10),
+            min_field_length=3,
+        )
 
-    def generate_variable(  # noqa: D102
-        self,
-        test_factory: TestFactory,
-        test_case: TestCase,
-        parameter_type: ProperType,
-        position: int,
-        recursion_depth: int,
-        *,
-        allow_none: bool,
-    ) -> VariableReference | None:
-        return generate_variable(test_factory, test_case, position, recursion_depth)
+        ref = test_factory.add_primitive(
+            test_case,
+            GrammarBasedStringPrimitiveStatement(
+                test_case, GrammarFuzzer(csv_grammar, 0, 100)
+            ),
+            position,
+        )
+
+        string_io_statement = stmt.ConstructorStatement(
+            test_case, string_io_accessible, {"initial_value": ref}
+        )
+        string_io_ret = test_case.add_variable_creating_statement(
+            string_io_statement, position + 1
+        )
+        string_io_ret.distance = recursion_depth
+
+        dataframe_accessible = gao.GenericFunction(
+            pd.read_csv,
+            test_case.test_cluster.type_system.infer_type_info(pd.read_csv),
+        )
+
+        dataframe_statement = stmt.FunctionStatement(
+            test_case, dataframe_accessible, {"filepath_or_buffer": string_io_ret}
+        )
+
+        dataframe_ret = test_case.add_variable_creating_statement(
+            dataframe_statement, position + 2
+        )
+        dataframe_ret.distance = recursion_depth
+
+        return dataframe_ret

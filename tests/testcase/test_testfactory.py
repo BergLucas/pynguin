@@ -272,7 +272,7 @@ def test_create_primitive(type_, default_test_case, default_variable_manager):
     proper = default_test_case.test_cluster.type_system.convert_type_hint(type_)
     factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     provider = EmptyConstantProvider()
-    result = tf.BuiltInVariableGenerator._create_primitive(
+    result = tf._ConcreteVariableGenerator._create_primitive(
         factory,
         default_test_case,
         proper,

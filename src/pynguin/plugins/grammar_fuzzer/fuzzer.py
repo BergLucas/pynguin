@@ -3,15 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from pynguin.grammar.grammar import AnyChar
-from pynguin.grammar.grammar import Choice
-from pynguin.grammar.grammar import Constant
-from pynguin.grammar.grammar import Grammar
-from pynguin.grammar.grammar import GrammarRule
-from pynguin.grammar.grammar import GrammarRuleVisitor
-from pynguin.grammar.grammar import Repeat
-from pynguin.grammar.grammar import RuleReference
-from pynguin.grammar.grammar import Sequence
+from pynguin.plugins.grammar_fuzzer.grammar import AnyChar
+from pynguin.plugins.grammar_fuzzer.grammar import Choice
+from pynguin.plugins.grammar_fuzzer.grammar import Constant
+from pynguin.plugins.grammar_fuzzer.grammar import Grammar
+from pynguin.plugins.grammar_fuzzer.grammar import GrammarRule
+from pynguin.plugins.grammar_fuzzer.grammar import GrammarRuleVisitor
+from pynguin.plugins.grammar_fuzzer.grammar import Repeat
+from pynguin.plugins.grammar_fuzzer.grammar import RuleReference
+from pynguin.plugins.grammar_fuzzer.grammar import Sequence
 from pynguin.utils import randomness
 
 

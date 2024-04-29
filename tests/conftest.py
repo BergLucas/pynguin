@@ -78,16 +78,8 @@ def test_case_mock():
 def default_variable_manager():
     return tf.VariableManager(
         {
-            tf.BuiltInVariableGenerator(): 1,
-        }
-    )
-
-
-@pytest.fixture()
-def default_variable_manager():
-    return tf.VariableManager(
-        {
-            tf.BuiltInVariableGenerator(): 1,
+            tf.abstract_variable_generator: 100.0,
+            tf.concrete_variable_generator: 100.0,
         }
     )
 

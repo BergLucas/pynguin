@@ -801,7 +801,8 @@ def _track_search_metrics(
 
 def _create_variable_generators() -> dict:
     variable_generators = {
-        tf.BuiltInVariableGenerator(): 100.0,
+        tf.abstract_variable_generator: 100.0,
+        tf.concrete_variable_generator: 100.0,
     }
 
     for plugin in config.plugins:

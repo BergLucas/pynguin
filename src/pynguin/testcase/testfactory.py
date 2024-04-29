@@ -254,7 +254,7 @@ class SupportedTypes(ABC, TypeVisitor[bool]):
     """A visitor for supported types."""
 
     def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
-        return True
+        return False
 
     def visit_none_type(self, left: NoneType) -> bool:  # noqa: D102
         return False
@@ -307,8 +307,24 @@ class AbstractVariableGenerator(ABC):
         """
 
 
-class _BuiltInSupportedTypes(SupportedTypes):
-    """A built-in supported types visitor."""
+class _AnySupportedTypes(SupportedTypes):
+    """A supported types visitor that only accepts the Any type."""
+
+    def visit_any_type(self, left: AnyType) -> bool:
+        return True
+
+    def visit_instance(self, left: Instance) -> bool:
+        return False
+
+    def visit_tuple_type(self, left: TupleType) -> bool:
+        return False
+
+
+any_supported_types = _AnySupportedTypes()
+
+
+class _AllSupportedTypes(SupportedTypes):
+    """A supported types visitor that accepts all types."""
 
     def visit_any_type(self, left: AnyType) -> bool:
         return True
@@ -326,7 +342,7 @@ class _BuiltInSupportedTypes(SupportedTypes):
         return True
 
 
-_builtin_supported_types = _BuiltInSupportedTypes()
+all_supported_types = _AllSupportedTypes()
 
 
 class BuiltInVariableGenerator(AbstractVariableGenerator):
@@ -334,7 +350,7 @@ class BuiltInVariableGenerator(AbstractVariableGenerator):
 
     @property
     def supported_types(self) -> SupportedTypes:  # noqa: D102
-        return _builtin_supported_types
+        return all_supported_types
 
     def generate_variable(  # noqa: D102
         self,

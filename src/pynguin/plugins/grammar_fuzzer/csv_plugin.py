@@ -129,7 +129,7 @@ class CsvVariableGenerator(AbstractVariableGenerator):
 
 
 class GrammarBasedStringPrimitiveStatement(StringPrimitiveStatement):
-    """Primitive Statement that creates a grammar_fuzzer based String."""
+    """Primitive Statement that creates a grammar based String."""
 
     def __init__(  # noqa: D107
         self,

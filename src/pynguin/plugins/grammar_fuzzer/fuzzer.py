@@ -1,7 +1,14 @@
+#  This file is part of Pynguin.
+#
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
+#
+#  SPDX-License-Identifier: MIT
+#
+"""Provides a grammar-based fuzzer for generating test data."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from pynguin.plugins.grammar_fuzzer.grammar import AnyChar
 from pynguin.plugins.grammar_fuzzer.grammar import Choice
@@ -15,23 +22,29 @@ from pynguin.plugins.grammar_fuzzer.grammar import Sequence
 from pynguin.utils import randomness
 
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
 class GrammarNonTerminalVisitor(GrammarRuleVisitor[bool]):
-    def visit_constant(self, constant: Constant) -> bool:
+    """A visitor for grammar rules that returns whether a rule is a non-terminal."""
+
+    def visit_constant(self, constant: Constant) -> bool:  # noqa: D102
         return False
 
-    def visit_sequence(self, sequence: Sequence) -> bool:
+    def visit_sequence(self, sequence: Sequence) -> bool:  # noqa: D102
         return any(rule.accept(self) for rule in sequence.rules)
 
-    def visit_rule_reference(self, rule_reference: RuleReference) -> bool:
+    def visit_rule_reference(self, rule_reference: RuleReference) -> bool:  # noqa: D102
         return True
 
-    def visit_any_char(self, any_char: AnyChar) -> bool:
+    def visit_any_char(self, any_char: AnyChar) -> bool:  # noqa: D102
         return False
 
-    def visit_choice(self, choice: Choice) -> bool:
+    def visit_choice(self, choice: Choice) -> bool:  # noqa: D102
         return any(rule.accept(self) for rule in choice.rules)
 
-    def visit_repeat(self, repeat: Repeat) -> bool:
+    def visit_repeat(self, repeat: Repeat) -> bool:  # noqa: D102
         if repeat.max is None:
             return True
         return repeat.rule.accept(self)
@@ -41,22 +54,24 @@ non_terminal_visitor = GrammarNonTerminalVisitor()
 
 
 class GrammarValueVisitor(GrammarRuleVisitor[str | None]):
-    def visit_constant(self, constant: Constant) -> str:
+    """A visitor for grammar rules that returns rules values."""
+
+    def visit_constant(self, constant: Constant) -> str:  # noqa: D102
         return constant.value
 
-    def visit_sequence(self, sequence: Sequence) -> None:
+    def visit_sequence(self, sequence: Sequence) -> None:  # noqa: D102
         return None
 
-    def visit_rule_reference(self, rule_reference: RuleReference) -> None:
+    def visit_rule_reference(self, rule_reference: RuleReference) -> None:  # noqa: D102
         return None
 
-    def visit_any_char(self, any_char: AnyChar) -> None:
+    def visit_any_char(self, any_char: AnyChar) -> None:  # noqa: D102
         return None
 
-    def visit_choice(self, choice: Choice) -> None:
+    def visit_choice(self, choice: Choice) -> None:  # noqa: D102
         return None
 
-    def visit_repeat(self, repeat: Repeat) -> None:
+    def visit_repeat(self, repeat: Repeat) -> None:  # noqa: D102
         return None
 
 
@@ -64,22 +79,24 @@ value_visitor = GrammarValueVisitor()
 
 
 class GrammarSymbolVisitor(GrammarRuleVisitor[str]):
-    def visit_constant(self, constant: Constant) -> str:
-        return f"{repr(constant.value)}"
+    """A visitor for grammar rules that returns a string representation of the rule."""
 
-    def visit_sequence(self, sequence: Sequence) -> str:
+    def visit_constant(self, constant: Constant) -> str:  # noqa: D102
+        return repr(constant.value)
+
+    def visit_sequence(self, sequence: Sequence) -> str:  # noqa: D102
         return "sequence"
 
-    def visit_rule_reference(self, rule_reference: RuleReference) -> str:
+    def visit_rule_reference(self, rule_reference: RuleReference) -> str:  # noqa: D102
         return f"<{rule_reference.name}>"
 
-    def visit_any_char(self, any_char: AnyChar) -> str:
+    def visit_any_char(self, any_char: AnyChar) -> str:  # noqa: D102
         return "any_char"
 
-    def visit_choice(self, choice: Choice) -> str:
+    def visit_choice(self, choice: Choice) -> str:  # noqa: D102
         return "choice"
 
-    def visit_repeat(self, repeat: Repeat) -> str:
+    def visit_repeat(self, repeat: Repeat) -> str:  # noqa: D102
         return "repeat"
 
 
@@ -87,27 +104,44 @@ symbol_visitor = GrammarSymbolVisitor()
 
 
 class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]):
+    """A visitor for grammar rules that returns possible expansions."""
+
     def __init__(self, grammar: Grammar) -> None:
+        """Create a new grammar expansions visitor.
+
+        Args:
+            grammar: The grammar to use.
+        """
         self._grammar = grammar
 
-    def visit_constant(self, constant: Constant) -> list[tuple[GrammarRule, ...]]:
-        return [tuple()]
+    def visit_constant(  # noqa: D102
+        self, constant: Constant
+    ) -> list[tuple[GrammarRule, ...]]:
+        return [()]
 
-    def visit_sequence(self, sequence: Sequence) -> list[tuple[GrammarRule, ...]]:
+    def visit_sequence(  # noqa: D102
+        self, sequence: Sequence
+    ) -> list[tuple[GrammarRule, ...]]:
         return [sequence.rules]
 
-    def visit_rule_reference(
+    def visit_rule_reference(  # noqa: D102
         self, rule_reference: RuleReference
     ) -> list[tuple[GrammarRule, ...]]:
         return [(rule,) for rule in self._grammar.expansions[rule_reference.name]]
 
-    def visit_any_char(self, any_char: AnyChar) -> list[tuple[GrammarRule, ...]]:
+    def visit_any_char(  # noqa: D102
+        self, any_char: AnyChar
+    ) -> list[tuple[GrammarRule, ...]]:
         return [(Constant(chr(code)),) for code in any_char.codes]
 
-    def visit_choice(self, choice: Choice) -> list[tuple[GrammarRule, ...]]:
+    def visit_choice(  # noqa: D102
+        self, choice: Choice
+    ) -> list[tuple[GrammarRule, ...]]:
         return [(rule,) for rule in choice.rules]
 
-    def visit_repeat(self, repeat: Repeat) -> list[tuple[GrammarRule, ...]]:
+    def visit_repeat(  # noqa: D102
+        self, repeat: Repeat
+    ) -> list[tuple[GrammarRule, ...]]:
         if repeat.min > 0:
             new_max_repeat = repeat.max - repeat.min if repeat.max is not None else None
             return [
@@ -121,7 +155,7 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]
                 )
             ]
 
-        expansions: list[tuple[GrammarRule, ...]] = [tuple()]
+        expansions: list[tuple[GrammarRule, ...]] = [()]
         if repeat.max is None:
             expansions.append((repeat.rule, repeat))
         elif repeat.max > 1:
@@ -133,11 +167,14 @@ class GrammarExpansionsVisitor(GrammarRuleVisitor[list[tuple[GrammarRule, ...]]]
 
 @dataclass
 class GrammarDerivationTree:
+    """A derivation tree for a grammar."""
+
     symbol: str
     rule: GrammarRule
     children: list[GrammarDerivationTree] | None
 
     def possible_expansions(self) -> int:
+        """Get the number of possible expansions."""
         if self.children is None:
             return 1
 
@@ -169,9 +206,18 @@ class GrammarDerivationTree:
 
 
 class GrammarFuzzer:
+    """A grammar-based fuzzer for generating test data."""
+
     def __init__(
         self, grammar: Grammar, min_non_terminal: int = 0, max_non_terminal: int = 10
     ) -> None:
+        """Create a new grammar fuzzer.
+
+        Args:
+            grammar: The grammar to use.
+            min_non_terminal: The minimum number of non-terminal expansions.
+            max_non_terminal: The maximum number of non-terminal expansions.
+        """
         assert min_non_terminal <= max_non_terminal
 
         self._grammar = grammar
@@ -181,9 +227,19 @@ class GrammarFuzzer:
 
     @property
     def grammar(self) -> Grammar:
+        """Get the grammar.
+
+        Returns:
+            The grammar.
+        """
         return self._grammar
 
     def create_tree(self) -> GrammarDerivationTree:
+        """Create a derivation tree.
+
+        Returns:
+            A derivation tree.
+        """
         rule = RuleReference(self._grammar.initial_rule)
 
         derivation_tree = GrammarDerivationTree(rule.accept(symbol_visitor), rule, None)
@@ -193,6 +249,11 @@ class GrammarFuzzer:
         return derivation_tree
 
     def mutate_tree(self, derivation_tree: GrammarDerivationTree) -> None:
+        """Mutate a derivation tree.
+
+        Args:
+            derivation_tree (GrammarDerivationTree): The derivation tree to mutate.
+        """
         if randomness.next_float() < 0.1:
             derivation_tree.children = None
             self._expand_tree_stategy(derivation_tree)
@@ -217,9 +278,8 @@ class GrammarFuzzer:
             for rule in expansion
         ]
 
-    def _non_terminal(
-        self, expansion: tuple[GrammarRule, ...]
-    ) -> tuple[GrammarRule, ...]:
+    @staticmethod
+    def _non_terminal(expansion: tuple[GrammarRule, ...]) -> tuple[GrammarRule, ...]:
         return tuple(rule for rule in expansion if rule.accept(non_terminal_visitor))
 
     def _rule_cost(self, rule: GrammarRule, seen: set[GrammarRule]) -> float:

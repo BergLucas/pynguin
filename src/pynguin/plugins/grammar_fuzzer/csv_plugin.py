@@ -1,3 +1,10 @@
+#  This file is part of Pynguin.
+#
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
+#
+#  SPDX-License-Identifier: MIT
+#
+"""Provides a plugin to generate CSV file-like object as test data."""
 import io
 
 from argparse import ArgumentParser

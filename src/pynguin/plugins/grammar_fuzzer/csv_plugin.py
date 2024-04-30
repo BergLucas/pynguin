@@ -36,6 +36,11 @@ from pynguin.utils import randomness
 NAME = "csv_fuzzer"
 
 csv_weight: float = 0.0
+min_nb_columns: int = 0
+max_nb_columns: int = 0
+min_field_length: int = 0
+min_non_terminal: int = 0
+max_non_terminal: int = 0
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -46,11 +51,52 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         help="""Weight to use a CSV file-like object as parameter type during test generation.
         Expects values > 0""",  # noqa: E501
     )
+    parser.add_argument(
+        "--min_nb_columns",
+        type=int,
+        default=1,
+        help="""Minimum number of columns in the CSV file-like object""",
+    )
+    parser.add_argument(
+        "--max_nb_columns",
+        type=int,
+        default=10,
+        help="""Maximum number of columns in the CSV file-like object""",
+    )
+    parser.add_argument(
+        "--min_field_length",
+        type=int,
+        default=3,
+        help="""Minimum length of a field in the CSV file-like object""",
+    )
+    parser.add_argument(
+        "--min_non_terminal",
+        type=int,
+        default=0,
+        help="""Minimum number of non-terminal symbols in the grammar""",
+    )
+    parser.add_argument(
+        "--max_non_terminal",
+        type=int,
+        default=100,
+        help="""Maximum number of non-terminal symbols in the grammar""",
+    )
 
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_weight  # noqa: PLW0603
+    global min_nb_columns  # noqa: PLW0603
+    global max_nb_columns  # noqa: PLW0603
+    global min_field_length  # noqa: PLW0603
+    global min_non_terminal  # noqa: PLW0603
+    global max_non_terminal  # noqa: PLW0603
+
     csv_weight = plugin_config.csv_weight
+    min_nb_columns = plugin_config.min_nb_columns
+    max_nb_columns = plugin_config.max_nb_columns
+    min_field_length = plugin_config.min_field_length
+    min_non_terminal = plugin_config.min_non_terminal
+    max_non_terminal = plugin_config.max_non_terminal
 
 
 def types_hook() -> list[type]:  # noqa: D103
@@ -120,12 +166,16 @@ class CsvVariableGenerator(VariableGenerator):
             type_info, test_case.test_cluster.type_system.infer_type_info(io.StringIO)
         )
 
-        csv_grammar = create_csv_grammar(randomness.next_int(1, 10), min_field_length=3)
+        csv_grammar = create_csv_grammar(
+            randomness.next_int(min_nb_columns, max_nb_columns),
+            min_field_length=min_field_length,
+        )
 
         ref = test_factory.add_primitive(
             test_case,
             GrammarBasedStringPrimitiveStatement(
-                test_case, GrammarFuzzer(csv_grammar, 0, 100)
+                test_case,
+                GrammarFuzzer(csv_grammar, min_non_terminal, max_non_terminal),
             ),
             position,
         )

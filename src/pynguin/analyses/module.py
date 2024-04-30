@@ -1523,7 +1523,7 @@ def __analyse_plugins_types(
         )
 
         try:
-            plugin_types: Collection[type] = types_hook()
+            plugin_types: Collection[Any] = types_hook()
         except BaseException:
             LOGGER.exception(
                 'Failed to run types_hook for plugin "%s"',

@@ -57,8 +57,8 @@ def ast_transformer_hook(  # noqa: D103
     )
 
 
-def type_system_hook(type_system: TypeSystem) -> None:  # noqa: D103
-    type_system.to_type_info(pd.DataFrame)
+def types_hook() -> list[type]:  # noqa: D103
+    return [pd.DataFrame]
 
 
 def statement_remover_hook(  # noqa: D103

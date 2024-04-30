@@ -7,13 +7,9 @@
 """Provides a plugin to generate CSV file-like object as test data."""
 import io
 
-from abc import abstractmethod
 from argparse import ArgumentParser
 from argparse import Namespace
-from collections.abc import Iterator
 from copy import deepcopy
-from typing import Protocol
-from typing import runtime_checkable
 
 import pynguin.testcase.statement as stmt
 import pynguin.utils.generic.genericaccessibleobject as gao
@@ -129,36 +125,12 @@ def variable_generator_hook(  # noqa: D103
     generators[CsvVariableGenerator()] = csv_weight
 
 
-@runtime_checkable
-class _ReadableFileLikeObject(Protocol):
-    @abstractmethod
-    def seek(self, __offset: int, __whence: int = ...) -> int: ...
-
-    @abstractmethod
-    def seekable(self) -> bool: ...
-
-    @abstractmethod
-    def tell(self) -> int: ...
-
-    @abstractmethod
-    def read(self, __n: int = ...) -> str: ...
-
-    @abstractmethod
-    def __iter__(self) -> Iterator[str]: ...
-
-    @abstractmethod
-    def fileno(self) -> int: ...
-
-    @abstractmethod
-    def readline(self) -> str: ...
-
-
 class _CsvSupportedTypes(SupportedTypes):
     """Supported types for CSV files."""
 
     def visit_instance(self, left: Instance) -> bool:
         try:
-            return issubclass(left.type.raw_type, _ReadableFileLikeObject)
+            return issubclass(left.type.raw_type, io.TextIOBase)
         except TypeError:
             return False
 

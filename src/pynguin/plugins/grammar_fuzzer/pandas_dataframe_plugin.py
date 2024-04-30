@@ -11,7 +11,6 @@ import pynguin.utils.generic.genericaccessibleobject as gao
 from pynguin.analyses.typesystem import Instance
 from pynguin.analyses.typesystem import ProperType
 from pynguin.analyses.typesystem import TupleType
-from pynguin.analyses.typesystem import TypeSystem
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar

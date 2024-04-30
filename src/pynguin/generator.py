@@ -76,7 +76,6 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from pynguin.analyses.module import ModuleTestCluster
-    from pynguin.analyses.module import TypeSystem
     from pynguin.assertion.mutation_analysis.operators.base import MutationOperator
     from pynguin.ga.algorithms.generationalgorithm import GenerationAlgorithm
 
@@ -134,28 +133,6 @@ def run_pynguin() -> ReturnCode:
         _LOGGER.info("Stop Pynguin Test Generation…")
 
 
-def _handle_plugins_types(type_system: TypeSystem) -> None:
-    for plugin in config.plugins:
-        try:
-            type_system_hook = plugin.type_system_hook
-        except AttributeError:
-            logging.debug(
-                'Plugin "%s" does not have a type_system_hook attribute',
-                plugin.NAME,
-                exc_info=True,
-            )
-            continue
-
-        try:
-            type_system_hook(type_system)
-        except BaseException:
-            logging.exception(
-                'Failed to run type_system_hook for plugin "%s"',
-                plugin.NAME,
-            )
-            continue
-
-
 def _setup_test_cluster() -> ModuleTestCluster | None:
     test_cluster = generate_test_cluster(
         config.configuration.module_name,
@@ -164,8 +141,6 @@ def _setup_test_cluster() -> ModuleTestCluster | None:
     if test_cluster.num_accessible_objects_under_test() == 0:
         _LOGGER.error("SUT contains nothing we can test.")
         return None
-
-    _handle_plugins_types(test_cluster.type_system)
 
     return test_cluster
 
@@ -286,7 +261,7 @@ def _create_transformer_functions():
         try:
             ast_transformer_hook = plugin.ast_transformer_hook
         except AttributeError:
-            logging.debug(
+            _LOGGER.debug(
                 'Plugin "%s" does not have an ast_transformer_hook attribute',
                 plugin.NAME,
                 exc_info=True,
@@ -296,7 +271,7 @@ def _create_transformer_functions():
         try:
             ast_transformer_hook(transformer_functions)
         except BaseException:
-            logging.exception(
+            _LOGGER.exception(
                 'Failed to run ast_transformer_hook for plugin "%s"',
                 plugin.NAME,
             )
@@ -665,7 +640,7 @@ def _create_remover_functions():
         try:
             statement_remover_hook = plugin.statement_remover_hook
         except AttributeError:
-            logging.debug(
+            _LOGGER.debug(
                 'Plugin "%s" does not have a statement_remover_hook attribute',
                 plugin.NAME,
                 exc_info=True,
@@ -675,7 +650,7 @@ def _create_remover_functions():
         try:
             statement_remover_hook(remover_functions)
         except BaseException:
-            logging.exception(
+            _LOGGER.exception(
                 'Failed to run statement_remover_hook for plugin "%s"',
                 plugin.NAME,
             )
@@ -835,7 +810,7 @@ def _create_variable_generators() -> dict:
         try:
             variable_generator_hook = plugin.variable_generator_hook
         except AttributeError:
-            logging.debug(
+            _LOGGER.debug(
                 'Plugin "%s" does not have a variable_generator_hook attribute',
                 plugin.NAME,
                 exc_info=True,
@@ -845,7 +820,7 @@ def _create_variable_generators() -> dict:
         try:
             variable_generator_hook(variable_generators)
         except BaseException:
-            logging.exception(
+            _LOGGER.exception(
                 'Failed to run variable_generator_hook for plugin "%s"',
                 plugin.NAME,
             )

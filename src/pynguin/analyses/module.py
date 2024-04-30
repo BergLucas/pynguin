@@ -75,6 +75,7 @@ from pynguin.utils.type_utils import get_class_that_defined_method
 
 if typing.TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Collection
 
     import pynguin.ga.algorithms.archive as arch
     import pynguin.ga.computations as ff
@@ -1286,8 +1287,8 @@ def __resolve_dependencies(
 
     # Provide a set of seen modules, classes and functions for fixed-point iteration
     seen_modules: set[ModuleType] = set()
-    seen_classes: set[Any] = set()
-    seen_functions: set[Any] = set()
+    seen_classes: set[type] = set()
+    seen_functions: set[FunctionType] = set()
 
     # Always analyse builtins
     __analyse_included_classes(
@@ -1299,6 +1300,16 @@ def __resolve_dependencies(
         parse_results=parse_results,
     )
     test_cluster.type_system.enable_numeric_tower()
+
+    # Analyse the plugins types
+    __analyse_plugins_types(
+        root_module_name=root_module.module_name,
+        type_inference_strategy=type_inference_strategy,
+        test_cluster=test_cluster,
+        seen_classes=seen_classes,
+        seen_functions=seen_functions,
+        parse_results=parse_results,
+    )
 
     # Start with root module, i.e., the module under test.
     wait_list: queue.SimpleQueue[ModuleType] = queue.SimpleQueue()
@@ -1349,6 +1360,50 @@ def __resolve_dependencies(
     test_cluster.type_system.push_attributes_down()
 
 
+def __analyse_raw_class(
+    *,
+    raw_class: type,
+    root_module_name: str,
+    type_inference_strategy: TypeInferenceStrategy,
+    test_cluster: ModuleTestCluster,
+    parse_results: dict[str, _ModuleParseResult],
+    seen_classes: set[type],
+) -> TypeInfo | None:
+    if raw_class in seen_classes:
+        return None
+
+    seen_classes.add(raw_class)
+
+    type_info = test_cluster.type_system.to_type_info(raw_class)
+
+    # Skip if the class is _ObjectProxyMethods, as it is broken
+    # since __module__ is not well-defined on it.
+    if isinstance(raw_class.__module__, property):
+        LOGGER.info("Skipping class that has a property __module__: %s", raw_class)
+        return None
+
+    # Skip some C-extension modules that are not publicly accessible.
+    try:
+        results = parse_results[raw_class.__module__]
+    except ModuleNotFoundError as error:
+        if getattr(raw_class, "__file__", None) is None or Path(
+            raw_class.__file__  # type: ignore[attr-defined]
+        ).suffix in {".so", ".pyd"}:
+            LOGGER.info("C-extension module not found: %s", raw_class.__module__)
+            return None
+        raise error
+
+    __analyse_class(
+        type_info=type_info,
+        type_inference_strategy=type_inference_strategy,
+        module_tree=results.syntax_tree,
+        test_cluster=test_cluster,
+        add_to_test=raw_class.__module__ == root_module_name,
+    )
+
+    return type_info
+
+
 def __analyse_included_classes(
     *,
     module: ModuleType,
@@ -1368,36 +1423,18 @@ def __analyse_included_classes(
     # TODO(fk) inner classes?
     while len(work_list) > 0:
         current = work_list.pop(0)
-        if current in seen_classes:
-            continue
-        seen_classes.add(current)
 
-        type_info = test_cluster.type_system.to_type_info(current)
-
-        # Skip if the class is _ObjectProxyMethods, as it is broken
-        # since __module__ is not well defined on it.
-        if isinstance(current.__module__, property):
-            LOGGER.info("Skipping class that has a property __module__: %s", current)
-            continue
-
-        # Skip some C-extension modules that are not publicly accessible.
-        try:
-            results = parse_results[current.__module__]
-        except ModuleNotFoundError as error:
-            if getattr(current, "__file__", None) is None or Path(
-                current.__file__
-            ).suffix in {".so", ".pyd"}:
-                LOGGER.info("C-extension module not found: %s", current.__module__)
-                continue
-            raise error
-
-        __analyse_class(
-            type_info=type_info,
+        type_info = __analyse_raw_class(
+            raw_class=current,
+            root_module_name=root_module_name,
             type_inference_strategy=type_inference_strategy,
-            module_tree=results.syntax_tree,
             test_cluster=test_cluster,
-            add_to_test=current.__module__ == root_module_name,
+            parse_results=parse_results,
+            seen_classes=seen_classes,
         )
+
+        if type_info is None:
+            continue
 
         if hasattr(current, "__bases__"):
             for base in current.__bases__:
@@ -1414,6 +1451,29 @@ def __analyse_included_classes(
                 work_list.append(base)
 
 
+def __analyse_raw_function(
+    *,
+    raw_function: FunctionType,
+    root_module_name: str,
+    type_inference_strategy: TypeInferenceStrategy,
+    test_cluster: ModuleTestCluster,
+    parse_results: dict[str, _ModuleParseResult],
+    seen_functions: set[FunctionType],
+) -> None:
+    if raw_function in seen_functions:
+        return
+    seen_functions.add(raw_function)
+
+    __analyse_function(
+        func_name=raw_function.__qualname__,
+        func=raw_function,
+        type_inference_strategy=type_inference_strategy,
+        module_tree=parse_results[raw_function.__module__].syntax_tree,
+        test_cluster=test_cluster,
+        add_to_test=raw_function.__module__ == root_module_name,
+    )
+
+
 def __analyse_included_functions(
     *,
     module: ModuleType,
@@ -1421,23 +1481,81 @@ def __analyse_included_functions(
     type_inference_strategy: TypeInferenceStrategy,
     test_cluster: ModuleTestCluster,
     parse_results: dict[str, _ModuleParseResult],
-    seen_functions: set,
+    seen_functions: set[FunctionType],
 ) -> None:
     for current in filter(
         lambda x: inspect.isfunction(x) and not _is_blacklisted(x),
         vars(module).values(),
     ):
-        if current in seen_functions:
-            continue
-        seen_functions.add(current)
-        __analyse_function(
-            func_name=current.__qualname__,
-            func=current,
+        __analyse_raw_function(
+            raw_function=current,
+            root_module_name=root_module_name,
             type_inference_strategy=type_inference_strategy,
-            module_tree=parse_results[current.__module__].syntax_tree,
             test_cluster=test_cluster,
-            add_to_test=current.__module__ == root_module_name,
+            parse_results=parse_results,
+            seen_functions=seen_functions,
         )
+
+
+def __analyse_plugins_types(
+    *,
+    root_module_name: str,
+    type_inference_strategy: TypeInferenceStrategy,
+    test_cluster: ModuleTestCluster,
+    parse_results: dict[str, _ModuleParseResult],
+    seen_classes: set[type],
+    seen_functions: set,
+) -> None:
+    for plugin in config.plugins:
+        try:
+            types_hook = plugin.types_hook
+        except AttributeError:
+            LOGGER.debug(
+                'Plugin "%s" does not have a types_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        LOGGER.info(
+            'Analysing the types of plugin "%s"',
+            plugin.NAME,
+        )
+
+        try:
+            plugin_types: Collection[Any] = types_hook()
+        except BaseException:
+            LOGGER.exception(
+                'Failed to run types_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
+        for plugin_type in plugin_types:
+            if inspect.isclass(plugin_type):
+                __analyse_raw_class(
+                    raw_class=plugin_type,
+                    root_module_name=root_module_name,
+                    type_inference_strategy=type_inference_strategy,
+                    test_cluster=test_cluster,
+                    parse_results=parse_results,
+                    seen_classes=seen_classes,
+                )
+            elif inspect.isfunction(plugin_type):
+                __analyse_raw_function(
+                    raw_function=plugin_type,
+                    root_module_name=root_module_name,
+                    type_inference_strategy=type_inference_strategy,
+                    test_cluster=test_cluster,
+                    parse_results=parse_results,
+                    seen_functions=seen_functions,
+                )
+            else:
+                LOGGER.warning(
+                    'Plugin "%s" returned an unexpected type "%s" from its types_hook',
+                    plugin.NAME,
+                    plugin_type,
+                )
 
 
 def analyse_module(

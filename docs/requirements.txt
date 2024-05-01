@@ -12,6 +12,7 @@ colorama==0.4.6 ; python_version >= "3.10" and python_version < "3.11" and (sys_
 docstring-parser==0.16 ; python_version >= "3.10" and python_version < "3.11"
 docutils==0.20.1 ; python_version >= "3.10" and python_version < "3.11"
 exceptiongroup==1.2.0 ; python_version >= "3.10" and python_version < "3.11"
+frozendict==2.4.2 ; python_version >= "3.10" and python_version < "3.11"
 idna==3.6 ; python_version >= "3.10" and python_version < "3.11"
 imagesize==1.4.1 ; python_version >= "3.10" and python_version < "3.11"
 iniconfig==2.0.0 ; python_version >= "3.10" and python_version < "3.11"

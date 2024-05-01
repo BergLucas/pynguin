@@ -209,7 +209,11 @@ class GrammarFuzzer:
     """A grammar-based fuzzer for generating test data."""
 
     def __init__(
-        self, grammar: Grammar, min_non_terminal: int = 0, max_non_terminal: int = 10
+        self,
+        grammar: Grammar,
+        min_non_terminal: int = 0,
+        max_non_terminal: int = 10,
+        mutation_rate: float = 0.1,
     ) -> None:
         """Create a new grammar fuzzer.
 
@@ -217,6 +221,7 @@ class GrammarFuzzer:
             grammar: The grammar to use.
             min_non_terminal: The minimum number of non-terminal expansions.
             max_non_terminal: The maximum number of non-terminal expansions.
+            mutation_rate: The mutation rate.
         """
         assert min_non_terminal <= max_non_terminal
 
@@ -224,6 +229,7 @@ class GrammarFuzzer:
         self._expansions_visitor = GrammarExpansionsVisitor(grammar)
         self._min_non_terminal = min_non_terminal
         self._max_non_terminal = max_non_terminal
+        self._mutation_rate = mutation_rate
 
     @property
     def grammar(self) -> Grammar:
@@ -233,6 +239,33 @@ class GrammarFuzzer:
             The grammar.
         """
         return self._grammar
+
+    @property
+    def min_non_terminal(self) -> int:
+        """Get the minimum number of non-terminal expansions.
+
+        Returns:
+            The minimum number of non-terminal expansions.
+        """
+        return self._min_non_terminal
+
+    @property
+    def max_non_terminal(self) -> int:
+        """Get the maximum number of non-terminal expansions.
+
+        Returns:
+            The maximum number of non-terminal expansions.
+        """
+        return self._max_non_terminal
+
+    @property
+    def mutation_rate(self) -> float:
+        """Get the mutation rate.
+
+        Returns:
+            The mutation rate.
+        """
+        return self._mutation_rate
 
     def create_tree(self) -> GrammarDerivationTree:
         """Create a derivation tree.
@@ -254,7 +287,7 @@ class GrammarFuzzer:
         Args:
             derivation_tree (GrammarDerivationTree): The derivation tree to mutate.
         """
-        if randomness.next_float() < 0.1:
+        if randomness.next_float() < self._mutation_rate:
             derivation_tree.children = None
             self._expand_tree_stategy(derivation_tree)
             return
@@ -366,3 +399,22 @@ class GrammarFuzzer:
         self._expand_tree(tree, self._expand_node_min_cost, None)
 
         assert tree.possible_expansions() == 0
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, GrammarFuzzer)
+            and self._grammar == other._grammar
+            and self._min_non_terminal == other._min_non_terminal
+            and self._max_non_terminal == other._max_non_terminal
+            and self._mutation_rate == other._mutation_rate
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self._grammar,
+                self._min_non_terminal,
+                self._max_non_terminal,
+                self._mutation_rate,
+            )
+        )

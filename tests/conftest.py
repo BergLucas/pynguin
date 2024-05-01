@@ -46,6 +46,7 @@ from pynguin.utils.generic.genericaccessibleobject import GenericConstructor
 from pynguin.utils.generic.genericaccessibleobject import GenericField
 from pynguin.utils.generic.genericaccessibleobject import GenericFunction
 from pynguin.utils.generic.genericaccessibleobject import GenericMethod
+from pynguin.utils.namingscope import NamingScope
 from tests.fixtures.accessibles.accessible import SomeType
 from tests.fixtures.accessibles.accessible import simple_function
 
@@ -531,6 +532,16 @@ def plus_test_with_multiple_assertions():
         )
     )
     return test_case
+
+
+@pytest.fixture()
+def var_names() -> NamingScope:
+    return NamingScope()
+
+
+@pytest.fixture()
+def module_aliases() -> NamingScope:
+    return NamingScope(prefix="module")
 
 
 # -- CONFIGURATIONS AND EXTENSIONS FOR PYTEST ------------------------------------------

@@ -5,6 +5,8 @@
 #  SPDX-License-Identifier: MIT
 #
 """Provides a function to create a grammar for CSV files."""
+from frozendict import frozendict
+
 from pynguin.plugins.grammar_fuzzer.grammar import AnyChar
 from pynguin.plugins.grammar_fuzzer.grammar import Choice
 from pynguin.plugins.grammar_fuzzer.grammar import Constant
@@ -45,12 +47,12 @@ def create_csv_grammar(
 
     return Grammar(
         "csv",
-        {
-            "csv": (Repeat(RuleReference("row")),),
-            "row": (Sequence(tuple(rules)),),
-            "field": (
+        frozendict(
+            csv=(Repeat(RuleReference("row")),),
+            row=(Sequence(tuple(rules)),),
+            field=(
                 field_rule,
                 Sequence((Constant('"'), field_rule, Constant('"'))),
             ),
-        },
+        ),
     )

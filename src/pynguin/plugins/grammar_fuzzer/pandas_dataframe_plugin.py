@@ -5,8 +5,6 @@
 #  SPDX-License-Identifier: MIT
 #
 """Provides a plugin to generate Pandas dataframes as test data."""
-import io
-
 from argparse import ArgumentParser
 from argparse import Namespace
 
@@ -22,11 +20,13 @@ from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFu
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
 from pynguin.plugins.grammar_fuzzer.csv_plugin import (
-    GrammarBasedStringPrimitiveStatement,
+    GrammarBasedFileLikeObjectStatement,
+)
+from pynguin.plugins.grammar_fuzzer.csv_plugin import (
+    transform_grammar_based_file_like_object_statement,
 )
 from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarFuzzer
 from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
-from pynguin.testcase.statement_to_ast import transform_primitive_statement
 from pynguin.testcase.testcase import TestCase
 from pynguin.testcase.testfactory import SupportedTypes
 from pynguin.testcase.testfactory import TestFactory
@@ -104,8 +104,8 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
 def ast_transformer_hook(  # noqa: D103
     transformer_functions: dict[type, StatementToAstTransformerFunction]
 ) -> None:
-    transformer_functions[GrammarBasedStringPrimitiveStatement] = (
-        transform_primitive_statement
+    transformer_functions[GrammarBasedFileLikeObjectStatement] = (
+        transform_grammar_based_file_like_object_statement
     )
 
 
@@ -116,7 +116,7 @@ def types_hook() -> list[type]:  # noqa: D103
 def statement_remover_hook(  # noqa: D103
     remover_functions: dict[type, UnusedPrimitiveOrCollectionStatementRemoverFunction]
 ) -> None:
-    remover_functions[GrammarBasedStringPrimitiveStatement] = (
+    remover_functions[GrammarBasedFileLikeObjectStatement] = (
         remove_collection_or_primitive
     )
 
@@ -160,36 +160,18 @@ class PandasVariableGenerator(VariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
-        string_io_type_info = test_case.test_cluster.type_system.alias_to_type_info(
-            "io.StringIO"
-        )
-
-        assert string_io_type_info is not None
-
-        string_io_accessible = gao.GenericConstructor(
-            string_io_type_info,
-            test_case.test_cluster.type_system.infer_type_info(io.StringIO),
-        )
-
         csv_grammar = create_csv_grammar(
             randomness.next_int(min_nb_columns, max_nb_columns),
             min_field_length=min_field_length,
         )
 
-        ref = test_factory.add_primitive(
-            test_case,
-            GrammarBasedStringPrimitiveStatement(
-                test_case,
-                GrammarFuzzer(csv_grammar, min_non_terminal, max_non_terminal),
-            ),
-            position,
+        csv_grammar_fuzzer = GrammarFuzzer(
+            csv_grammar, min_non_terminal, max_non_terminal
         )
 
-        string_io_statement = stmt.ConstructorStatement(
-            test_case, string_io_accessible, {"initial_value": ref}
-        )
         string_io_ret = test_case.add_variable_creating_statement(
-            string_io_statement, position + 1
+            GrammarBasedFileLikeObjectStatement(test_case, csv_grammar_fuzzer),
+            position,
         )
         string_io_ret.distance = recursion_depth
 
@@ -203,7 +185,7 @@ class PandasVariableGenerator(VariableGenerator):
         )
 
         dataframe_ret = test_case.add_variable_creating_statement(
-            dataframe_statement, position + 2
+            dataframe_statement, position + 1
         )
         dataframe_ret.distance = recursion_depth
 

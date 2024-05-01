@@ -5,6 +5,8 @@
 #  SPDX-License-Identifier: MIT
 #
 """Some utilites to make testing easier."""
+import ast
+
 import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin.analyses.typesystem import Instance
@@ -39,3 +41,9 @@ def feed_typesystem(system: TypeSystem, generic: gao.GenericAccessibleObject):
 
     if isinstance(generic, gao.GenericField):
         system.to_type_info(generic.owner.raw_type)
+
+
+def create_source_from_ast(module_body: ast.stmt) -> str:
+    return ast.unparse(
+        ast.fix_missing_locations(ast.Module(body=[module_body], type_ignores=[]))
+    )

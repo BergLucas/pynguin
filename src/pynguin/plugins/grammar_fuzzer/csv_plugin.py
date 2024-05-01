@@ -78,13 +78,13 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--min_field_length",
         type=int,
-        default=3,
+        default=2,
         help="""Minimum length of a field in the CSV file-like object""",
     )
     parser.add_argument(
         "--min_non_terminal",
         type=int,
-        default=0,
+        default=10,
         help="""Minimum number of non-terminal symbols in the grammar""",
     )
     parser.add_argument(

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import abc
+import ast
 import builtins
 import dataclasses
 import enum
@@ -42,6 +43,7 @@ from pynguin.analyses.syntaxtree import astroid_to_ast
 from pynguin.analyses.syntaxtree import get_class_node_from_ast
 from pynguin.analyses.syntaxtree import get_function_description
 from pynguin.analyses.syntaxtree import get_function_node_from_ast
+from pynguin.analyses.syntaxtree import to_code
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import AnyType
 from pynguin.analyses.typesystem import Instance
@@ -291,6 +293,8 @@ def parse_module(module_name: str) -> _ModuleParseResult:
             path=source_file if source_file is not None else "",
         )
         linenos = len(source_code.splitlines())
+
+        __analyse_type_checking(module, syntax_tree)
 
     except (TypeError, OSError) as error:
         LOGGER.debug(
@@ -1295,6 +1299,8 @@ def __resolve_dependencies(
     parse_results: dict[str, _ModuleParseResult] = _ParseResults()
     parse_results[root_module.module_name] = root_module
 
+    __analyse_type_checking(root_module.module, root_module.syntax_tree)
+
     # Provide a set of seen modules, classes and functions for fixed-point iteration
     seen_modules: set[ModuleType] = set()
     seen_classes: set[Any] = set()
@@ -1358,6 +1364,34 @@ def __resolve_dependencies(
     LOGGER.info("Classes:   %5i", len(seen_classes))
 
     test_cluster.type_system.push_attributes_down()
+
+
+def __analyse_type_checking(module: ModuleType, syntax_tree: astroid.Module) -> None:
+    for statement in syntax_tree.body:
+        if not (
+            isinstance(statement, astroid.If)
+            and isinstance(condition := statement.test, astroid.Name)
+            and condition.name == "TYPE_CHECKING"
+        ):
+            continue
+
+        for type_checking_statement in statement.body:
+            if not isinstance(
+                type_checking_statement, astroid.Import | astroid.ImportFrom
+            ):
+                continue
+
+            type_checking_ast = ast.parse(to_code(type_checking_statement))
+            type_checking_code = compile(type_checking_ast, "<ast>", "exec")
+
+            try:
+                exec(type_checking_code, module.__dict__)  # noqa: S102
+            except BaseException:  # noqa: BLE001
+                LOGGER.debug(
+                    "Could not execute TYPE_CHECKING import: %s",
+                    ast.unparse(type_checking_ast),
+                    exc_info=True,
+                )
 
 
 def __analyse_included_classes(

@@ -1078,6 +1078,7 @@ def __analyse_function(
     func_name: str,
     func: FunctionType,
     type_inference_strategy: TypeInferenceStrategy,
+    globalns: dict[str, Any],
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1096,6 +1097,7 @@ def __analyse_function(
     inferred_signature = test_cluster.type_system.infer_type_info(
         func,
         type_inference_strategy=type_inference_strategy,
+        globalns=globalns,
     )
     func_ast = get_function_node_from_ast(module_tree, func_name)
     description = get_function_description(func_ast)
@@ -1119,6 +1121,7 @@ def __analyse_class(
     *,
     type_info: TypeInfo,
     type_inference_strategy: TypeInferenceStrategy,
+    globalns: dict[str, Any],
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1149,6 +1152,8 @@ def __analyse_class(
             test_cluster.type_system.infer_type_info(
                 type_info.raw_type.__init__,
                 type_inference_strategy=type_inference_strategy,
+                globalns=globalns,
+                localns=type_info.raw_type.__dict__,  # type: ignore[arg-type]
             ),
             raised_exceptions,
         )
@@ -1181,6 +1186,8 @@ def __analyse_class(
             method_name=method_name,
             method=method,
             type_inference_strategy=type_inference_strategy,
+            globalns=globalns,
+            localns=type_info.raw_type.__dict__,  # type: ignore[arg-type]
             class_tree=class_ast,
             test_cluster=test_cluster,
             add_to_test=add_to_test,
@@ -1226,6 +1233,8 @@ def __analyse_method(
         | MethodDescriptorType
     ),
     type_inference_strategy: TypeInferenceStrategy,
+    globalns: dict[str, Any],
+    localns: dict[str, Any],
     class_tree: astroid.ClassDef | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1249,6 +1258,8 @@ def __analyse_method(
     inferred_signature = test_cluster.type_system.infer_type_info(
         method,
         type_inference_strategy=type_inference_strategy,
+        globalns=globalns,
+        localns=localns,
     )
     method_ast = get_function_node_from_ast(class_tree, method_name)
     description = get_function_description(method_ast)
@@ -1394,6 +1405,7 @@ def __analyse_included_classes(
         __analyse_class(
             type_info=type_info,
             type_inference_strategy=type_inference_strategy,
+            globalns=module.__dict__,
             module_tree=results.syntax_tree,
             test_cluster=test_cluster,
             add_to_test=current.__module__ == root_module_name,
@@ -1434,6 +1446,7 @@ def __analyse_included_functions(
             func_name=current.__qualname__,
             func=current,
             type_inference_strategy=type_inference_strategy,
+            globalns=module.__dict__,
             module_tree=parse_results[current.__module__].syntax_tree,
             test_cluster=test_cluster,
             add_to_test=current.__module__ == root_module_name,

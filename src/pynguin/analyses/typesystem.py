@@ -1483,12 +1483,16 @@ class TypeSystem:  # noqa: PLR0904
         self,
         method: Callable,
         type_inference_strategy=config.TypeInferenceStrategy.TYPE_HINTS,
+        globalns: dict[str, Any] | None = None,
+        localns: dict[str, Any] | None = None,
     ) -> InferredSignature:
         """Infers the type information for a callable.
 
         Args:
             method: The callable we try to infer type information for
             type_inference_strategy: Whether to incorporate type annotations
+            globalns: The global namespace
+            localns: The local namespace
 
         Returns:
             The inference result
@@ -1499,20 +1503,36 @@ class TypeSystem:  # noqa: PLR0904
         """
         match type_inference_strategy:
             case config.TypeInferenceStrategy.TYPE_HINTS:
-                return self.infer_signature(method, self.type_hints_provider)
+                return self.infer_signature(
+                    method,
+                    self.type_hints_provider,
+                    globalns=globalns,
+                    localns=localns,
+                )
             case config.TypeInferenceStrategy.NONE:
-                return self.infer_signature(method, self.no_type_hints_provider)
+                return self.infer_signature(
+                    method,
+                    self.no_type_hints_provider,
+                    globalns=globalns,
+                    localns=localns,
+                )
             case _:
                 raise ConfigurationException(
                     f"Unknown type-inference strategy {type_inference_strategy}"
                 )
 
     @staticmethod
-    def no_type_hints_provider(_: Callable) -> dict[str, Any]:
+    def no_type_hints_provider(
+        method: Callable,  # noqa: ARG004
+        globalns: dict[str, Any] | None = None,  # noqa: ARG004
+        localns: dict[str, Any] | None = None,  # noqa: ARG004
+    ) -> dict[str, Any]:
         """Provides no type hints.
 
         Args:
-            _: Ignored.
+            method: Ignored.
+            globalns: Ignored.
+            localns: Ignored.
 
         Returns:
             An empty dict.
@@ -1520,17 +1540,23 @@ class TypeSystem:  # noqa: PLR0904
         return {}
 
     @staticmethod
-    def type_hints_provider(method: Callable) -> dict[str, Any]:
+    def type_hints_provider(
+        method: Callable,
+        globalns: dict[str, Any] | None = None,
+        localns: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Provides PEP484-style type information, if available.
 
         Args:
             method: The method for which we want type hints.
+            globalns: The global namespace
+            localns: The local namespace
 
         Returns:
             A dict mapping parameter names to type hints.
         """
         try:
-            hints = get_type_hints(method)
+            hints = get_type_hints(method, globalns, localns)
             # Sadly there is no guarantee that resolving the type hints actually works.
             # If the developers annotated something with an erroneous type hint we fall
             # back to no type hints, i.e., use Any.
@@ -1546,19 +1572,27 @@ class TypeSystem:  # noqa: PLR0904
     def infer_signature(
         self,
         method: Callable,
-        type_hint_provider: Callable[[Callable], dict],
+        type_hint_provider: Callable[
+            [Callable, dict[str, Any] | None, dict[str, Any] | None], dict
+        ],
+        globalns: dict[str, Any] | None = None,
+        localns: dict[str, Any] | None = None,
     ) -> InferredSignature:
         """Infers the method signature using the given type hint provider.
 
         Args:
             method: The callable
             type_hint_provider: A method that provides type hints for the given method.
+            globalns: The global namespace
+            localns: The local namespace
 
         Returns:
             The inference result
         """
         try:
-            method_signature = inspect.signature(method)
+            method_signature = inspect.signature(
+                method, globals=globalns, locals=localns
+            )
         except ValueError:
             method_signature = inspect.Signature(
                 parameters=[
@@ -1576,11 +1610,11 @@ class TypeSystem:  # noqa: PLR0904
                 return_annotation=inspect.Signature.empty,
             )
 
-        hints = type_hint_provider(method)
+        hints = type_hint_provider(method, globalns, localns)
         parameters: dict[str, ProperType] = {}
 
         # Always use type hints for statistics, regardless of configured inference.
-        hints_for_statistics: dict = self.type_hints_provider(method)
+        hints_for_statistics: dict = self.type_hints_provider(method, globalns, localns)
         parameters_for_statistics: dict[str, ProperType] = {}
         for param_name in method_signature.parameters:
             if param_name == "self":

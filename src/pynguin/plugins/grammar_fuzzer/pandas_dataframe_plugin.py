@@ -80,7 +80,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--max_non_terminal",
         type=int,
-        default=100,
+        default=25,
         help="""Maximum number of non-terminal symbols in the grammar""",
     )
 

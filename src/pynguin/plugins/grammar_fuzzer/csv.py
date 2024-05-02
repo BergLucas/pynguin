@@ -21,9 +21,9 @@ def create_csv_grammar(  # noqa: PLR0917
     nb_columns: int,
     string_constants: list[str] | None = None,
     min_field_length: int = 0,
-    max_field_length: int = 10,
+    max_field_length: int | None = 10,
     min_nb_rows: int = 1,
-    max_nb_rows: int = 10,
+    max_nb_rows: int | None = 10,
 ) -> Grammar:
     """Create a grammar for CSV files.
 

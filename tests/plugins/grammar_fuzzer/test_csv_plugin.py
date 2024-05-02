@@ -40,7 +40,7 @@ def test_grammar_based_file_like_object_statement_to_ast(
     )
     assert (
         create_source_from_ast(ast_node)
-        == 'var_0 = module_0.StringIO(\'POIv,v5iFlbCBFN,mBjMtpsi,"clR"\\nsb,"JN9w","F","W"\\n\')'
+        == "var_0 = module_0.StringIO('k7mqMLO5t,tEbfI7,Vq,cYJQ1w04j\\n')"
     )
 
 

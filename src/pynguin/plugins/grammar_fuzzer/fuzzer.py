@@ -174,7 +174,9 @@ class GrammarDerivationTreeExpander(GrammarDerivationTreeVisitor[bool]):
             node.children = node.rule.accept(self._grammar_expander)
             return True
 
-        return any(child.accept(self) for child in node.children)
+        shuffled_children = randomness.RNG.sample(node.children, len(node.children))
+
+        return any(child.accept(self) for child in shuffled_children)
 
 
 class GrammarDerivationTreeMutator(GrammarDerivationTreeVisitor[bool]):
@@ -364,7 +366,7 @@ class GrammarFuzzer:
         self,
         grammar: Grammar,
         min_non_terminal: int = 0,
-        max_non_terminal: int = 100,
+        max_non_terminal: int = 25,
         mutation_rate: float = 0.1,
     ) -> None:
         """Create a new grammar fuzzer.

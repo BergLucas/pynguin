@@ -201,7 +201,9 @@ class GrammarDerivationTreeMutator(GrammarDerivationTreeVisitor[bool]):
         if node.children is None:
             return False
 
-        return any(child.accept(self) for child in node.children)
+        shuffled_children = randomness.RNG.sample(node.children, len(node.children))
+
+        return any(child.accept(self) for child in shuffled_children)
 
 
 class GrammarRuleCost(GrammarRuleVisitor[int | None]):

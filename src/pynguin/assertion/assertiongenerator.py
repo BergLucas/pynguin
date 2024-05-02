@@ -13,7 +13,11 @@ import logging
 import threading
 import types
 
+from abc import ABC
+from abc import abstractmethod
 from typing import TYPE_CHECKING
+
+from multiprocess.pool import ThreadPool
 
 import pynguin.assertion.assertion as ass
 import pynguin.assertion.assertion_trace as at
@@ -36,7 +40,6 @@ from pynguin.utils.statistics.runtimevariable import RuntimeVariable
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
     from collections.abc import Iterable
 
     import pynguin.ga.testcasechromosome as tcc
@@ -302,13 +305,177 @@ class InstrumentedMutationController(ct.MutationController):
         return module
 
 
+class MutantsExecutor(ABC):
+    """A class for executing test cases on mutants."""
+
+    _logger = logging.getLogger(__name__)
+
+    def __init__(self, mutation_controller: InstrumentedMutationController) -> None:
+        """Create new mutants executor.
+
+        Args:
+            mutation_controller: The mutation controller.
+        """
+        self._mutation_controller = mutation_controller
+        self._mutant_count = mutation_controller.mutant_count()
+
+    @property
+    @abstractmethod
+    def mutation_executor(self) -> ex.TestCaseExecutor:
+        """Provides the mutation executor.
+
+        Returns:
+            The mutation executor.
+        """
+
+    @property
+    def mutant_count(self) -> int:
+        """Provides the number of mutants.
+
+        Returns:
+            The number of mutants.
+        """
+        return self._mutant_count
+
+    def execute_test_cases_on_mutant(
+        self,
+        mutant_id: int,
+        test_cases: list[tc.TestCase],
+        mutated_module: types.ModuleType | None,
+    ) -> Iterable[ex.ExecutionResult | None]:
+        """Execute the test cases on a mutant.
+
+        Args:
+            mutant_id: The id of the mutant.
+            test_cases: The test cases.
+            mutated_module: The mutated module.
+
+        Returns:
+            The execution results.
+        """
+        if mutated_module is None:
+            self._logger.info(
+                "Skipping mutant %3i/%i because it created an invalid module",
+                mutant_id,
+                self._mutant_count,
+            )
+            return (None for _ in range(len(test_cases)))
+
+        self._logger.info(
+            "Running tests on mutant %3i/%i",
+            mutant_id,
+            self._mutant_count,
+        )
+
+        self.mutation_executor.module_provider.add_mutated_version(
+            module_name=config.configuration.module_name,
+            mutated_module=mutated_module,
+            transformer=self._mutation_controller.transformer,
+        )
+
+        return self.mutation_executor.execute_multiple(test_cases)
+
+    def execute_test_cases_on_mutants(
+        self,
+        test_cases: list[tc.TestCase],
+    ) -> Iterable[Iterable[ex.ExecutionResult | None]]:
+        """Execute the test cases on all mutants.
+
+        Args:
+            test_cases: The test cases.
+
+        Returns:
+            The execution results.
+        """
+        with self.mutation_executor.temporarily_add_remote_observer(
+            ato.RemoteAssertionVerificationObserver()
+        ):
+            for mutant_id, (mutated_module, _) in enumerate(
+                self._mutation_controller.create_mutants(), start=1
+            ):
+                yield self.execute_test_cases_on_mutant(
+                    mutant_id,
+                    test_cases,
+                    mutated_module,
+                )
+
+
+class SingleThreadMutantsExecutor(MutantsExecutor):
+    """Executes test cases on mutants in a single thread."""
+
+    def __init__(self, mutation_controller: InstrumentedMutationController) -> None:
+        """Create new mutants executor.
+
+        Args:
+            mutation_controller: The mutation controller.
+        """
+        super().__init__(mutation_controller)
+
+        self._mutation_executor = ex.TestCaseExecutor(mutation_controller.tracer)
+        self._mutation_executor.add_remote_observer(
+            ato.RemoteAssertionVerificationObserver()
+        )
+
+    @property
+    def mutation_executor(self) -> ex.TestCaseExecutor:  # noqa: D102
+        return self._mutation_executor
+
+
+class MultiThreadMutantsExecutor(MutantsExecutor):
+    """Executes test cases on mutants in multiple threads."""
+
+    def __init__(
+        self,
+        mutation_controller: InstrumentedMutationController,
+        num_threads: int | None = None,
+    ) -> None:
+        """Create new mutants executor.
+
+        Args:
+            mutation_controller: The mutation controller.
+            num_threads: The number of threads to use.
+        """
+        super().__init__(mutation_controller)
+        self._mutation_executor = ex.SubprocessTestCaseExecutor(
+            mutation_controller.tracer
+        )
+        self._mutation_executor.add_remote_observer(
+            ato.RemoteAssertionVerificationObserver()
+        )
+        self._num_threads = num_threads
+
+    @property
+    def mutation_executor(self) -> ex.SubprocessTestCaseExecutor:  # noqa: D102
+        return self._mutation_executor
+
+    def execute_test_cases_on_mutants(  # noqa: D102
+        self,
+        test_cases: list[tc.TestCase],
+    ) -> Iterable[Iterable[ex.ExecutionResult | None]]:
+        with (
+            self.mutation_executor.temporarily_add_remote_observer(
+                ato.RemoteAssertionVerificationObserver()
+            ),
+            ThreadPool(self._num_threads) as thread_pool,
+        ):
+            return thread_pool.starmap(
+                self.execute_test_cases_on_mutant,
+                (
+                    (mutant_id, test_cases, mutated_module)
+                    for mutant_id, (mutated_module, _) in enumerate(
+                        self._mutation_controller.create_mutants(), start=1
+                    )
+                ),
+            )
+
+
 class MutationAnalysisAssertionGenerator(AssertionGenerator):
     """Uses mutation analysis to filter out less relevant assertions."""
 
     def __init__(
         self,
         plain_executor: ex.TestCaseExecutor,
-        mutation_controller: InstrumentedMutationController,
+        mutants_executor: MutantsExecutor,
         *,
         testing: bool = False,
     ):
@@ -316,70 +483,16 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
 
         Args:
             plain_executor: Executor used for plain execution
-            mutation_controller: Controller for mutation analysis
+            mutants_executor: Executor used for mutant execution
             testing: Enable test mode, currently required for integration testing.
         """
         super().__init__(plain_executor)
 
-        if config.configuration.subprocess:
-            self._mutation_executor: ex.TestCaseExecutor = (
-                ex.SubprocessTestCaseExecutor(mutation_controller.tracer)
-            )
-        else:
-            self._mutation_executor = ex.TestCaseExecutor(mutation_controller.tracer)
-
-        self._mutation_executor.add_remote_observer(
-            ato.RemoteAssertionVerificationObserver()
-        )
-
-        self._mutation_controller = mutation_controller
+        self._mutants_executor = mutants_executor
 
         # Some debug information
         self._testing = testing
         self._testing_mutation_summary: _MutationSummary = _MutationSummary()
-
-    def _execute_test_case_on_mutant(
-        self,
-        test_cases: list[tc.TestCase],
-        mutated_module: types.ModuleType | None,
-        idx: int,
-        mutant_count: int,
-    ) -> Iterable[ex.ExecutionResult | None]:
-        if mutated_module is None:
-            self._logger.info(
-                "Skipping mutant %3i/%i because it created an invalid module",
-                idx,
-                mutant_count,
-            )
-            return (None for _ in range(len(test_cases)))
-
-        self._logger.info(
-            "Running tests on mutant %3i/%i",
-            idx,
-            mutant_count,
-        )
-        self._mutation_executor.module_provider.add_mutated_version(
-            module_name=config.configuration.module_name,
-            mutated_module=mutated_module,
-            transformer=self._mutation_controller.transformer,
-        )
-
-        return self._mutation_executor.execute_multiple(test_cases)
-
-    def _execute_test_case_on_mutants(
-        self,
-        test_cases: list[tc.TestCase],
-        mutant_count: int,
-    ) -> Generator[Iterable[ex.ExecutionResult | None], None, None]:
-        for idx, (mutated_module, _) in enumerate(
-            self._mutation_controller.create_mutants(), start=1
-        ):
-            yield self._execute_test_case_on_mutant(
-                test_cases,
-                mutated_module,
-                idx,
-                mutant_count,
-            )
 
     def _add_assertions(self, test_cases: list[tc.TestCase]):
         super()._add_assertions(test_cases)
@@ -387,20 +500,18 @@ class MutationAnalysisAssertionGenerator(AssertionGenerator):
             [] for _ in test_cases
         ]
 
-        mutant_count = self._mutation_controller.mutant_count()
-
-        with self._mutation_executor.temporarily_add_remote_observer(
-            ato.RemoteAssertionVerificationObserver()
-        ):
-            for tests_mutant_results in self._execute_test_case_on_mutants(
-                test_cases, mutant_count
+        for (
+            tests_mutant_results
+        ) in self._mutants_executor.execute_test_cases_on_mutants(test_cases):
+            for test_mutants_results, test_mutant_results in zip(
+                tests_mutants_results, tests_mutant_results, strict=True
             ):
-                for test_mutants_results, test_mutant_results in zip(
-                    tests_mutants_results, tests_mutant_results, strict=True
-                ):
-                    test_mutants_results.append(test_mutant_results)
+                test_mutants_results.append(test_mutant_results)
 
-        summary = self.__compute_mutation_summary(mutant_count, tests_mutants_results)
+        summary = self.__compute_mutation_summary(
+            self._mutants_executor.mutant_count,
+            tests_mutants_results,
+        )
         self.__report_mutation_summary(summary)
         self.__remove_non_relevant_assertions(
             test_cases, tests_mutants_results, summary

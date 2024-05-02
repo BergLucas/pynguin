@@ -91,7 +91,8 @@ def test_generate_mutation_assertions(generator, expected_result):
             mutation_controller = ag.InstrumentedMutationController(
                 mutant_generator, module_ast, module, mutation_tracer
             )
-            gen = generator(TestCaseExecutor(tracer), mutation_controller)
+            mutants_executor = ag.SingleThreadMutantsExecutor(mutation_controller)
+            gen = generator(TestCaseExecutor(tracer), mutants_executor)
         else:
             gen = generator(TestCaseExecutor(tracer))
         suite.accept(gen)
@@ -309,8 +310,9 @@ def test_mutation_analysis_integration_full(  # noqa: PLR0917
         mutation_controller = ag.InstrumentedMutationController(
             mutant_generator, module_ast, module_type, mutation_tracer, testing=True
         )
+        mutants_executor = ag.SingleThreadMutantsExecutor(mutation_controller)
         gen = ag.MutationAnalysisAssertionGenerator(
-            TestCaseExecutor(tracer), mutation_controller, testing=True
+            TestCaseExecutor(tracer), mutants_executor, testing=True
         )
         suite.accept(gen)
 

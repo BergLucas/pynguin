@@ -659,8 +659,14 @@ def _setup_mutation_analysis_assertion_generator(
     mutation_controller = ag.InstrumentedMutationController(
         mutant_generator, module_ast, module, mutation_tracer
     )
+    mutants_executor: ag.MutantsExecutor
+    if config.configuration.subprocess:
+        mutants_executor = ag.MultiThreadMutantsExecutor(mutation_controller)
+    else:
+        mutants_executor = ag.SingleThreadMutantsExecutor(mutation_controller)
+
     assertion_generator = ag.MutationAnalysisAssertionGenerator(
-        executor, mutation_controller
+        executor, mutants_executor
     )
 
     _LOGGER.info("Generated %d mutants", mutation_controller.mutant_count())

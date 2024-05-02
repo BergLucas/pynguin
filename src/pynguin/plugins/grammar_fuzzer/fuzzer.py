@@ -277,8 +277,8 @@ class GrammarRuleCost(GrammarRuleVisitor[int | None]):
         return 1 + rule_cost * repeat.min
 
 
-class GrammarRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]]):
-    """A visitor that expands a node randomly."""
+class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]]):
+    """A visitor that generates rules expansions randomly."""
 
     def __init__(self, grammar: Grammar) -> None:
         """Create a new grammar expander.
@@ -322,8 +322,8 @@ class GrammarRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]]):
         return [GrammarDerivationNode(repeat.rule) for _ in range(nb_repeats)]
 
 
-class GrammarCostExpander(GrammarRandomExpander):
-    """A visitor that expands a node based on the cost of the expansions."""
+class GrammarRuleCostExpander(GrammarRuleRandomExpander):
+    """A visitor that generates rules expansions based on a cost function."""
 
     def __init__(
         self, grammar: Grammar, cost_function: Callable[[Iterable[int]], int]
@@ -381,13 +381,13 @@ class GrammarFuzzer:
 
         self._grammar = grammar
         self._random_expander = GrammarDerivationTreeExpander(
-            GrammarRandomExpander(grammar)
+            GrammarRuleRandomExpander(grammar)
         )
         self._min_cost_expander = GrammarDerivationTreeExpander(
-            GrammarCostExpander(grammar, min)
+            GrammarRuleCostExpander(grammar, min)
         )
         self._max_cost_expander = GrammarDerivationTreeExpander(
-            GrammarCostExpander(grammar, max)
+            GrammarRuleCostExpander(grammar, max)
         )
         self._possible_expansions_calculator = (
             GrammarDerivationTreePossibleExpansionsCalculator()

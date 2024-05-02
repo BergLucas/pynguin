@@ -30,7 +30,7 @@ def test_grammar_based_file_like_object_statement_to_ast(
 ):
     randomness.RNG.seed(42)
 
-    csv_grammar = create_csv_grammar(3, min_field_length=2)
+    csv_grammar = create_csv_grammar(4)
     csv_grammar_fuzzer = GrammarFuzzer(csv_grammar)
     file_like_object_stmt = GrammarBasedFileLikeObjectStatement(
         default_test_case, csv_grammar_fuzzer
@@ -40,7 +40,7 @@ def test_grammar_based_file_like_object_statement_to_ast(
     )
     assert (
         create_source_from_ast(ast_node)
-        == 'var_0 = module_0.StringIO(\'"5L","ZS","Siv"\\n\')'
+        == 'var_0 = module_0.StringIO(\'POIv,v5iFlbCBFN,mBjMtpsi,"clR"\\nsb,"JN9w","F","W"\\n\')'
     )
 
 

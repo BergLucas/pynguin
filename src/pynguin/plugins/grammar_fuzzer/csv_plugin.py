@@ -300,9 +300,12 @@ class GrammarBasedFileLikeObjectStatement(VariableCreatingStatement):
         return self._string_io_accessible
 
     def mutate(self) -> bool:  # noqa: D102
-        self._fuzzer.mutate_tree(self._derivation_tree)
-        self._csv_string = str(self._derivation_tree)
-        return True
+        mutated = self._fuzzer.mutate_tree(self._derivation_tree)
+
+        if mutated:
+            self._csv_string = str(self._derivation_tree)
+
+        return mutated
 
     def get_variable_references(self) -> set[vr.VariableReference]:  # noqa: D102
         return {self.ret_val}

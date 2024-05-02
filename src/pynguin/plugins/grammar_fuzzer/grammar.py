@@ -23,7 +23,7 @@ class Grammar:
     """A grammar."""
 
     initial_rule: str
-    expansions: frozendict[str, tuple[GrammarRule, ...]]
+    rules: frozendict[str, GrammarRule]
 
 
 T_co = TypeVar("T_co", covariant=True)

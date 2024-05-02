@@ -111,8 +111,8 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     max_non_terminal = plugin_config.max_non_terminal
 
 
-def types_hook() -> list[type]:  # noqa: D103
-    return [io.TextIOBase]
+def types_hook() -> list[type | tuple[type, str]]:  # noqa: D103
+    return [(io.StringIO, "io")]
 
 
 def ast_transformer_hook(  # noqa: D103
@@ -154,13 +154,16 @@ def transform_grammar_based_file_like_object_statement(
     Returns:
         The AST node.
     """
-    owner = stmt.accessible_object().owner
+    accessible_object = stmt.accessible_object()
+    owner = accessible_object.owner
     assert owner
     call = ast.Call(
         func=ast.Attribute(
             attr=owner.name,
             ctx=ast.Load(),
-            value=create_module_alias(owner.module, module_aliases),
+            value=create_module_alias(
+                accessible_object.exporter_module, module_aliases
+            ),
         ),
         args=[ast.Constant(value=stmt.csv_string)],
         keywords=[],
@@ -258,8 +261,8 @@ class GrammarBasedFileLikeObjectStatement(VariableCreatingStatement):
         self._fuzzer = fuzzer
         self._csv_string = str(derivation_tree)
 
-        string_io_type_info = test_case.test_cluster.type_system.alias_to_type_info(
-            "io.StringIO"
+        string_io_type_info = test_case.test_cluster.type_system.to_type_info(
+            io.StringIO
         )
 
         assert string_io_type_info is not None
@@ -267,6 +270,7 @@ class GrammarBasedFileLikeObjectStatement(VariableCreatingStatement):
         self._string_io_accessible = gao.GenericConstructor(
             string_io_type_info,
             test_case.test_cluster.type_system.infer_type_info(io.StringIO),
+            exporter_module="io",
         )
 
         super().__init__(

@@ -57,7 +57,7 @@ def test_simple_execution(default_test_case):
     with install_import_hook(config.configuration.module_name, tracer):
         module = importlib.import_module(config.configuration.module_name)
         importlib.reload(module)
-        csv_grammar = create_csv_grammar(3, min_field_length=2)
+        csv_grammar = create_csv_grammar(3, 2)
         csv_grammar_fuzzer = GrammarFuzzer(csv_grammar)
         default_test_case.add_statement(
             GrammarBasedFileLikeObjectStatement(default_test_case, csv_grammar_fuzzer)

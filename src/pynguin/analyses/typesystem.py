@@ -1538,10 +1538,58 @@ class TypeSystem:  # noqa: PLR0904
             # typing.TYPE_CHECKING, e.g., to avoid circular imports, in which case this
             # also fails.
         except (AttributeError, NameError, TypeError) as exc:
-            _LOGGER.debug("Could not retrieve type hints for %s", method)
+            _LOGGER.debug(
+                "Could not retrieve type hints for %s,"
+                " falling back to finding builtin types",
+                method,
+            )
             _LOGGER.debug(exc)
-            hints = {}
+            hints = TypeSystem._get_type_hints_fallback(method)
         return hints
+
+    @staticmethod
+    def _get_type_hints_fallback(method: Callable) -> dict[str, Any]:
+        type_annotations = getattr(method, "__annotations__", None)
+
+        if type_annotations is None:
+            return {}
+
+        defaults = typing._get_defaults(method)  # type: ignore[attr-defined]
+
+        hints = {}
+        for name, value in type_annotations.items():
+            if value is None:
+                value = type(None)
+
+            if isinstance(value, str):
+                value = ForwardRef(
+                    value,
+                    is_argument=True,
+                    is_class=False,
+                )
+                globalns = vars(typing)
+                try:
+                    value = typing._eval_type(  # type: ignore[attr-defined]
+                        value, globalns, globalns
+                    )
+                except (AttributeError, NameError, TypeError) as exc:
+                    _LOGGER.debug(
+                        'Could not retrieve the type hint of arg "%s" for %s',
+                        name,
+                        method,
+                    )
+                    _LOGGER.debug(exc)
+                    continue
+
+            if name in defaults:
+                value = typing.Optional[value]
+
+            hints[name] = value
+
+        return {
+            k: typing._strip_annotations(t)  # type: ignore[attr-defined]
+            for k, t in hints.items()
+        }
 
     def infer_signature(
         self,

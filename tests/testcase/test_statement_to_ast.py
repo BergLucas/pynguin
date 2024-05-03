@@ -4,7 +4,6 @@
 #
 #  SPDX-License-Identifier: MIT
 #
-import ast
 import inspect
 
 from unittest.mock import MagicMock
@@ -31,29 +30,13 @@ from pynguin.testcase.statement_to_ast import transform_tuple_statement
 from pynguin.utils.generic.genericaccessibleobject import GenericConstructor
 from pynguin.utils.generic.genericaccessibleobject import GenericFunction
 from pynguin.utils.generic.genericaccessibleobject import GenericMethod
-from pynguin.utils.namingscope import NamingScope
-
-
-@pytest.fixture()
-def var_names() -> NamingScope:
-    return NamingScope()
-
-
-@pytest.fixture()
-def module_aliases() -> NamingScope:
-    return NamingScope(prefix="module")
-
-
-def __create_source_from_ast(module_body: ast.stmt) -> str:
-    return ast.unparse(
-        ast.fix_missing_locations(ast.Module(body=[module_body], type_ignores=[]))
-    )
+from tests.testutils import create_source_from_ast
 
 
 def test_statement_to_ast_int(module_aliases, var_names, default_test_case):
     int_stmt = stmt.IntPrimitiveStatement(default_test_case, 5)
     ast_node = transform_primitive_statement(int_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = 5"
+    assert create_source_from_ast(ast_node) == "var_0 = 5"
 
 
 def test_statement_to_ast_float(module_aliases, var_names, default_test_case):
@@ -61,13 +44,13 @@ def test_statement_to_ast_float(module_aliases, var_names, default_test_case):
     ast_node = transform_primitive_statement(
         float_stmt, module_aliases, var_names, True
     )
-    assert __create_source_from_ast(ast_node) == "var_0 = 5.5"
+    assert create_source_from_ast(ast_node) == "var_0 = 5.5"
 
 
 def test_statement_to_ast_str(module_aliases, var_names, default_test_case):
     str_stmt = stmt.StringPrimitiveStatement(default_test_case, "TestMe")
     ast_node = transform_primitive_statement(str_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = 'TestMe'"
+    assert create_source_from_ast(ast_node) == "var_0 = 'TestMe'"
 
 
 def test_statement_to_ast_bytes(module_aliases, var_names, default_test_case):
@@ -75,13 +58,13 @@ def test_statement_to_ast_bytes(module_aliases, var_names, default_test_case):
     ast_node = transform_primitive_statement(
         bytes_stmt, module_aliases, var_names, True
     )
-    assert __create_source_from_ast(ast_node) == "var_0 = b'TestMe'"
+    assert create_source_from_ast(ast_node) == "var_0 = b'TestMe'"
 
 
 def test_statement_to_ast_bool(module_aliases, var_names, default_test_case):
     bool_stmt = stmt.BooleanPrimitiveStatement(default_test_case, True)  # noqa: FBT003
     ast_node = transform_primitive_statement(bool_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = True"
+    assert create_source_from_ast(ast_node) == "var_0 = True"
 
 
 def test_statement_to_ast_class(module_aliases, var_names, default_test_case):
@@ -89,13 +72,13 @@ def test_statement_to_ast_class(module_aliases, var_names, default_test_case):
     ast_node = transform_class_primitive_statement(
         class_stmt, module_aliases, var_names, True
     )
-    assert __create_source_from_ast(ast_node) == "var_0 = module_0.int"
+    assert create_source_from_ast(ast_node) == "var_0 = module_0.int"
 
 
 def test_statement_to_ast_none(module_aliases, var_names, default_test_case):
     none_stmt = stmt.NoneStatement(default_test_case)
     ast_node = transform_primitive_statement(none_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = None"
+    assert create_source_from_ast(ast_node) == "var_0 = None"
 
 
 def test_statement_to_ast_enum(module_aliases, var_names, default_test_case):
@@ -108,7 +91,7 @@ def test_statement_to_ast_enum(module_aliases, var_names, default_test_case):
         0,
     )
     ast_node = transform_enum_statement(enum_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = module_0.MagicMock.BAR"
+    assert create_source_from_ast(ast_node) == "var_0 = module_0.MagicMock.BAR"
 
 
 def test_statement_to_ast_assignment(module_aliases, var_names, default_test_case):
@@ -125,7 +108,7 @@ def test_statement_to_ast_assignment(module_aliases, var_names, default_test_cas
     ast_node = transform_assignment_statement(
         assign_stmt, module_aliases, var_names, True
     )
-    assert __create_source_from_ast(ast_node) == "var_0.foo = var_1"
+    assert create_source_from_ast(ast_node) == "var_0.foo = var_1"
 
 
 def test_statement_to_ast_field(module_aliases, var_names, default_test_case):
@@ -137,7 +120,7 @@ def test_statement_to_ast_field(module_aliases, var_names, default_test_case):
     )
     field_stmt = stmt.FieldStatement(default_test_case, field, string.ret_val)
     ast_node = transform_field_statement(field_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = var_1.foo"
+    assert create_source_from_ast(ast_node) == "var_0 = var_1.foo"
 
 
 def all_param_types_signature(type_system):
@@ -338,7 +321,7 @@ def test_statement_to_ast_constructor_args(
     ast_node = transform_constructor_statement(
         constr_stmt, module_aliases, var_names, True
     )
-    assert __create_source_from_ast(ast_node) == expected
+    assert create_source_from_ast(ast_node) == expected
 
 
 def test_statement_to_ast_constructor_no_store(
@@ -348,7 +331,7 @@ def test_statement_to_ast_constructor_no_store(
     ast_node = transform_constructor_statement(
         constr_stmt, module_aliases, var_names, False
     )
-    assert __create_source_from_ast(ast_node) == "module_0.MagicMock()"
+    assert create_source_from_ast(ast_node) == "module_0.MagicMock()"
 
 
 @pytest.mark.parametrize(
@@ -397,7 +380,7 @@ def test_statement_to_ast_method_args(
         args,
     )
     ast_node = transform_method_statement(method_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == expected
+    assert create_source_from_ast(ast_node) == expected
 
 
 def test_statement_to_ast_method_no_store(
@@ -410,7 +393,7 @@ def test_statement_to_ast_method_no_store(
         {},
     )
     ast_node = transform_method_statement(method_stmt, module_aliases, var_names, False)
-    assert __create_source_from_ast(ast_node) == "var_0.method()"
+    assert create_source_from_ast(ast_node) == "var_0.method()"
 
 
 @pytest.mark.parametrize(
@@ -454,7 +437,7 @@ def test_statement_to_ast_function_args(
 ):
     func_stmt = stmt.FunctionStatement(test_case_mock, all_types_function, args)
     ast_node = transform_function_statement(func_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == expected
+    assert create_source_from_ast(ast_node) == expected
 
 
 @pytest.mark.parametrize(
@@ -502,7 +485,7 @@ def test_statement_to_ast_function_default_args(
 ):
     func_stmt = stmt.FunctionStatement(test_case_mock, default_args_function, args)
     ast_node = transform_function_statement(func_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == expected
+    assert create_source_from_ast(ast_node) == expected
 
 
 @pytest.mark.parametrize(
@@ -530,7 +513,7 @@ def test_statement_to_ast_function_no_default_args(
 ):
     func_stmt = stmt.FunctionStatement(test_case_mock, no_default_args_function, args)
     ast_node = transform_function_statement(func_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == expected
+    assert create_source_from_ast(ast_node) == expected
 
 
 def test_statement_to_ast_function_no_store(
@@ -538,7 +521,7 @@ def test_statement_to_ast_function_no_store(
 ):
     func_stmt = stmt.FunctionStatement(test_case_mock, all_types_function, {})
     ast_node = transform_function_statement(func_stmt, module_aliases, var_names, False)
-    assert __create_source_from_ast(ast_node) == "module_0.function()"
+    assert create_source_from_ast(ast_node) == "module_0.function()"
 
 
 def test_statement_to_ast_list_single(module_aliases, var_names, default_test_case):
@@ -548,7 +531,7 @@ def test_statement_to_ast_list_single(module_aliases, var_names, default_test_ca
         [stmt.IntPrimitiveStatement(default_test_case, 5).ret_val],
     )
     ast_node = transform_list_statement(list_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = [var_1]"
+    assert create_source_from_ast(ast_node) == "var_0 = [var_1]"
 
 
 def test_statement_to_ast_list_empty(module_aliases, var_names, default_test_case):
@@ -558,7 +541,7 @@ def test_statement_to_ast_list_empty(module_aliases, var_names, default_test_cas
         [],
     )
     ast_node = transform_list_statement(list_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = []"
+    assert create_source_from_ast(ast_node) == "var_0 = []"
 
 
 def test_statement_to_ast_set_single(module_aliases, var_names, default_test_case):
@@ -568,7 +551,7 @@ def test_statement_to_ast_set_single(module_aliases, var_names, default_test_cas
         [stmt.IntPrimitiveStatement(default_test_case, 5).ret_val],
     )
     ast_node = transform_set_statement(set_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_1 = {var_0}"
+    assert create_source_from_ast(ast_node) == "var_1 = {var_0}"
 
 
 def test_statement_to_ast_set_empty(module_aliases, var_names, default_test_case):
@@ -578,7 +561,7 @@ def test_statement_to_ast_set_empty(module_aliases, var_names, default_test_case
         [],
     )
     ast_node = transform_set_statement(set_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = set()"
+    assert create_source_from_ast(ast_node) == "var_0 = set()"
 
 
 def test_statement_to_ast_tuple_single(module_aliases, var_names, default_test_case):
@@ -588,7 +571,7 @@ def test_statement_to_ast_tuple_single(module_aliases, var_names, default_test_c
         [stmt.IntPrimitiveStatement(default_test_case, 5).ret_val],
     )
     ast_node = transform_tuple_statement(tuple_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = (var_1,)"
+    assert create_source_from_ast(ast_node) == "var_0 = (var_1,)"
 
 
 def test_statement_to_ast_tuple_empty(module_aliases, var_names, default_test_case):
@@ -598,7 +581,7 @@ def test_statement_to_ast_tuple_empty(module_aliases, var_names, default_test_ca
         [],
     )
     ast_node = transform_tuple_statement(tuple_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = ()"
+    assert create_source_from_ast(ast_node) == "var_0 = ()"
 
 
 def test_statement_to_ast_dict_single(module_aliases, var_names, default_test_case):
@@ -613,7 +596,7 @@ def test_statement_to_ast_dict_single(module_aliases, var_names, default_test_ca
         ],
     )
     ast_node = transform_dict_statement(dict_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = {var_1: var_2}"
+    assert create_source_from_ast(ast_node) == "var_0 = {var_1: var_2}"
 
 
 def test_statement_to_ast_dict_empty(module_aliases, var_names, default_test_case):
@@ -623,4 +606,4 @@ def test_statement_to_ast_dict_empty(module_aliases, var_names, default_test_cas
         [],
     )
     ast_node = transform_dict_statement(dict_stmt, module_aliases, var_names, True)
-    assert __create_source_from_ast(ast_node) == "var_0 = {}"
+    assert create_source_from_ast(ast_node) == "var_0 = {}"

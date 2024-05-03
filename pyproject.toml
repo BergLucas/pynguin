@@ -59,6 +59,7 @@ asciitree = "^0.3.3"
 libcst = "^1.2.0"
 multiprocess = "^0.70.16"
 dill = "^0.3.8"
+frozendict = "^2.4.2"
 
 [tool.poetry.group.dev.dependencies]
 isort = {extras = ["pyproject"], version = "^5.13.2"}

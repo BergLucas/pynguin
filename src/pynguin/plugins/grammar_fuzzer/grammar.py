@@ -9,8 +9,13 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Protocol
 from typing import TypeVar
+
+
+if TYPE_CHECKING:
+    from frozendict import frozendict
 
 
 @dataclass(frozen=True)
@@ -18,7 +23,7 @@ class Grammar:
     """A grammar."""
 
     initial_rule: str
-    expansions: dict[str, tuple[GrammarRule, ...]]
+    rules: frozendict[str, GrammarRule]
 
 
 T_co = TypeVar("T_co", covariant=True)

@@ -168,3 +168,9 @@ def create_aor_mutation_on_substraction(node: ast.Sub | None = None) -> Mutation
         operator=ArithmeticOperatorReplacement,
         visitor_name="mutate_Sub",
     )
+
+
+def create_source_from_ast(module_body: ast.stmt) -> str:
+    return ast.unparse(
+        ast.fix_missing_locations(ast.Module(body=[module_body], type_ignores=[]))
+    )

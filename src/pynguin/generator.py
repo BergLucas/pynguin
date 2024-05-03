@@ -138,9 +138,30 @@ def _setup_test_cluster() -> ModuleTestCluster | None:
         config.configuration.module_name,
         config.configuration.type_inference.type_inference_strategy,
     )
+
     if test_cluster.num_accessible_objects_under_test() == 0:
         _LOGGER.error("SUT contains nothing we can test.")
         return None
+
+    for plugin in config.plugins:
+        try:
+            test_cluster_hook = plugin.test_cluster_hook
+        except AttributeError:
+            _LOGGER.debug(
+                'Plugin "%s" does not have a test_cluster_hook attribute',
+                plugin.NAME,
+                exc_info=True,
+            )
+            continue
+
+        try:
+            test_cluster_hook(test_cluster)
+        except BaseException:
+            _LOGGER.exception(
+                'Failed to run test_cluster_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
 
     return test_cluster
 

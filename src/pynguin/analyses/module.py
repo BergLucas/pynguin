@@ -1079,6 +1079,7 @@ def __analyse_function(
     func_name: str,
     func: FunctionType,
     type_inference_strategy: TypeInferenceStrategy,
+    module: str | None,
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1103,7 +1104,7 @@ def __analyse_function(
     raised_exceptions = description.raises if description is not None else set()
     cyclomatic_complexity = __get_mccabe_complexity(func_ast)
     generic_function = GenericFunction(
-        func, inferred_signature, raised_exceptions, func_name
+        func, inferred_signature, raised_exceptions, func_name, module
     )
     function_data = _CallableData(
         accessible=generic_function,
@@ -1120,6 +1121,7 @@ def __analyse_class(
     *,
     type_info: TypeInfo,
     type_inference_strategy: TypeInferenceStrategy,
+    module: str | None,
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1137,7 +1139,7 @@ def __analyse_class(
     cyclomatic_complexity = __get_mccabe_complexity(constructor_ast)
 
     if issubclass(type_info.raw_type, enum.Enum):
-        generic: GenericEnum | GenericConstructor = GenericEnum(type_info)
+        generic: GenericEnum | GenericConstructor = GenericEnum(type_info, module)
         if isinstance(generic, GenericEnum) and len(generic.names) == 0:
             LOGGER.debug(
                 "Skipping enum %s from test cluster, it has no fields.",
@@ -1152,6 +1154,7 @@ def __analyse_class(
                 type_inference_strategy=type_inference_strategy,
             ),
             raised_exceptions,
+            module,
         )
         generic.inferred_signature.return_type = (
             test_cluster.type_system.convert_type_hint(type_info.raw_type)
@@ -1182,6 +1185,7 @@ def __analyse_class(
             method_name=method_name,
             method=method,
             type_inference_strategy=type_inference_strategy,
+            module=module,
             class_tree=class_ast,
             test_cluster=test_cluster,
             add_to_test=add_to_test,
@@ -1227,6 +1231,7 @@ def __analyse_method(
         | MethodDescriptorType
     ),
     type_inference_strategy: TypeInferenceStrategy,
+    module: str | None,
     class_tree: astroid.ClassDef | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1256,7 +1261,7 @@ def __analyse_method(
     raised_exceptions = description.raises if description is not None else set()
     cyclomatic_complexity = __get_mccabe_complexity(method_ast)
     generic_method = GenericMethod(
-        type_info, method, inferred_signature, raised_exceptions, method_name
+        type_info, method, inferred_signature, raised_exceptions, method_name, module
     )
     method_data = _CallableData(
         accessible=generic_method,
@@ -1368,6 +1373,7 @@ def __analyse_raw_class(
     test_cluster: ModuleTestCluster,
     parse_results: dict[str, _ModuleParseResult],
     seen_classes: set[type],
+    module: str | None = None,
 ) -> TypeInfo | None:
     if raw_class in seen_classes:
         return None
@@ -1396,6 +1402,7 @@ def __analyse_raw_class(
     __analyse_class(
         type_info=type_info,
         type_inference_strategy=type_inference_strategy,
+        module=module,
         module_tree=results.syntax_tree,
         test_cluster=test_cluster,
         add_to_test=raw_class.__module__ == root_module_name,
@@ -1459,6 +1466,7 @@ def __analyse_raw_function(
     test_cluster: ModuleTestCluster,
     parse_results: dict[str, _ModuleParseResult],
     seen_functions: set[FunctionType],
+    module: str | None = None,
 ) -> None:
     if raw_function in seen_functions:
         return
@@ -1468,6 +1476,7 @@ def __analyse_raw_function(
         func_name=raw_function.__qualname__,
         func=raw_function,
         type_inference_strategy=type_inference_strategy,
+        module=module,
         module_tree=parse_results[raw_function.__module__].syntax_tree,
         test_cluster=test_cluster,
         add_to_test=raw_function.__module__ == root_module_name,
@@ -1532,6 +1541,19 @@ def __analyse_plugins_types(
             continue
 
         for plugin_type in plugin_types:
+            if isinstance(plugin_type, tuple):
+                try:
+                    plugin_type, module = plugin_type  # noqa: PLW2901
+                except TypeError:
+                    LOGGER.warning(
+                        'Plugin "%s" returned a tuple with more than two elements"'
+                        "from its types_hook",
+                        plugin.NAME,
+                    )
+                    continue
+            else:
+                module = None
+
             if inspect.isclass(plugin_type):
                 __analyse_raw_class(
                     raw_class=plugin_type,
@@ -1540,6 +1562,7 @@ def __analyse_plugins_types(
                     test_cluster=test_cluster,
                     parse_results=parse_results,
                     seen_classes=seen_classes,
+                    module=module,
                 )
             elif inspect.isfunction(plugin_type):
                 __analyse_raw_function(
@@ -1549,6 +1572,7 @@ def __analyse_plugins_types(
                     test_cluster=test_cluster,
                     parse_results=parse_results,
                     seen_functions=seen_functions,
+                    module=module,
                 )
             else:
                 LOGGER.warning(

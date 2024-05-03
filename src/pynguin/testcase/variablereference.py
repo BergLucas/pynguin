@@ -406,7 +406,7 @@ class StaticFieldReference(Reference):
     ) -> list[str]:
         assert self._field.owner is not None
         return [
-            module_names.get_name(self._field.owner.module),
+            module_names.get_name(self._field.exporter_module),
             self._field.owner.name,
             self._field.field,
         ]
@@ -469,7 +469,7 @@ class StaticModuleFieldReference(Reference):
         variable_names: ns.AbstractNamingScope,
         module_names: ns.AbstractNamingScope,
     ) -> list[str]:
-        return [module_names.get_name(self._field.module), self._field.field]
+        return [module_names.get_name(self._field.exporter_module), self._field.field]
 
     def clone(  # noqa: D102
         self, memo: dict[VariableReference, VariableReference]

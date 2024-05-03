@@ -5,17 +5,15 @@
 #  SPDX-License-Identifier: MIT
 #
 """Provides a plugin to generate Pandas dataframes as test data."""
-from argparse import ArgumentParser
-from argparse import Namespace
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 import pynguin.testcase.statement as stmt
 import pynguin.utils.generic.genericaccessibleobject as gao
 
-from pynguin.analyses.typesystem import Instance
-from pynguin.analyses.typesystem import ProperType
-from pynguin.analyses.typesystem import TupleType
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
@@ -26,18 +24,28 @@ from pynguin.plugins.grammar_fuzzer.csv_plugin import (
     transform_grammar_based_file_like_object_statement,
 )
 from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarFuzzer
-from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
-from pynguin.testcase.testcase import TestCase
 from pynguin.testcase.testfactory import SupportedTypes
 from pynguin.testcase.testfactory import TestFactory
 from pynguin.testcase.testfactory import VariableGenerator
-from pynguin.testcase.variablereference import VariableReference
 from pynguin.utils import randomness
 
+
+if TYPE_CHECKING:
+    from argparse import ArgumentParser
+    from argparse import Namespace
+
+    from pynguin.analyses.module import TestCluster
+    from pynguin.analyses.typesystem import Instance
+    from pynguin.analyses.typesystem import ProperType
+    from pynguin.analyses.typesystem import TupleType
+    from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
+    from pynguin.testcase.testcase import TestCase
+    from pynguin.testcase.variablereference import VariableReference
 
 NAME = "pandas_dataframe_fuzzer"
 
 pandas_dataframe_weight: float = 0.0
+pandas_dataframe_concrete_weight: float = 0.0
 pandas_dataframe_min_columns_number: int = 0
 pandas_dataframe_max_columns_number: int = 0
 pandas_dataframe_min_field_length: int = 0
@@ -54,6 +62,13 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         type=float,
         default=0.0,
         help="""Weight to use a Pandas dataframe object as parameter type."""
+        """Expects values > 0""",
+    )
+    parser.add_argument(
+        "--pandas_dataframe_concrete_weight",
+        type=float,
+        default=100.0,
+        help="""Weight to convert an abstract type to a Pandas dataframe object."""
         """Expects values > 0""",
     )
     parser.add_argument(
@@ -132,16 +147,22 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     pandas_dataframe_max_non_terminal = plugin_config.pandas_dataframe_max_non_terminal
 
 
+def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
+    type_info = test_cluster.type_system.to_type_info(pd.DataFrame)
+    typ = test_cluster.type_system.make_instance(type_info)
+    test_cluster.set_concrete_weight(typ, pandas_dataframe_concrete_weight)
+
+
+def types_hook() -> list[type]:  # noqa: D103
+    return [pd.DataFrame]
+
+
 def ast_transformer_hook(  # noqa: D103
     transformer_functions: dict[type, StatementToAstTransformerFunction]
 ) -> None:
     transformer_functions[GrammarBasedFileLikeObjectStatement] = (
         transform_grammar_based_file_like_object_statement
     )
-
-
-def types_hook() -> list[type]:  # noqa: D103
-    return [pd.DataFrame]
 
 
 def statement_remover_hook(  # noqa: D103

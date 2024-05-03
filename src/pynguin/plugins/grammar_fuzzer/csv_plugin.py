@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     import pynguin.utils.namingscope as ns
 
+    from pynguin.analyses.module import TestCluster
     from pynguin.analyses.typesystem import Instance
     from pynguin.analyses.typesystem import ProperType
     from pynguin.analyses.typesystem import TupleType
@@ -45,9 +46,11 @@ if TYPE_CHECKING:
     from pynguin.testcase.testcase import TestCase
     from pynguin.testcase.variablereference import VariableReference
 
+
 NAME = "csv_fuzzer"
 
 csv_weight: float = 0.0
+csv_concrete_weight: float = 0.0
 csv_min_columns_number: int = 0
 csv_max_columns_number: int = 0
 csv_min_field_length: int = 0
@@ -64,6 +67,13 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         type=float,
         default=100.0,
         help="""Weight to use a CSV file-like object as parameter type."""
+        """Expects values > 0""",
+    )
+    parser.add_argument(
+        "--csv_concrete_weight",
+        type=float,
+        default=100.0,
+        help="""Weight to convert an abstract type to a CSV file-like object."""
         """Expects values > 0""",
     )
     parser.add_argument(
@@ -118,6 +128,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_weight  # noqa: PLW0603
+    global csv_concrete_weight  # noqa: PLW0603
     global csv_min_columns_number  # noqa: PLW0603
     global csv_max_columns_number  # noqa: PLW0603
     global csv_min_field_length  # noqa: PLW0603
@@ -128,6 +139,7 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_max_non_terminal  # noqa: PLW0603
 
     csv_weight = plugin_config.csv_weight
+    csv_concrete_weight = plugin_config.csv_concrete_weight
     csv_min_columns_number = plugin_config.csv_min_columns_number
     csv_max_columns_number = plugin_config.csv_max_columns_number
     csv_min_field_length = plugin_config.csv_min_field_length
@@ -136,6 +148,12 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     csv_max_rows_number = plugin_config.csv_max_rows_number
     csv_min_non_terminal = plugin_config.csv_min_non_terminal
     csv_max_non_terminal = plugin_config.csv_max_non_terminal
+
+
+def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
+    type_info = test_cluster.type_system.to_type_info(io.StringIO)
+    typ = test_cluster.type_system.make_instance(type_info)
+    test_cluster.set_concrete_weight(typ, csv_concrete_weight)
 
 
 def types_hook() -> list[type | tuple[type, str]]:  # noqa: D103

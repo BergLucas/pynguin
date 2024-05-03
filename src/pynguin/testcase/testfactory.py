@@ -174,9 +174,9 @@ class VariableManager:
                 population.append(generator)
                 weights.append(weight)
 
-        variable_generator: VariableGenerator = randomness.choices(
-            population, weights, k=1
-        )[0]
+        variable_generator: VariableGenerator = randomness.choices(population, weights)[
+            0
+        ]
 
         return variable_generator.generate_variable(
             test_factory,
@@ -221,9 +221,7 @@ class VariableManager:
                 return self.create_or_reuse_variable(
                     test_factory=test_factory,
                     test_case=test_case,
-                    parameter_type=randomness.choice(
-                        test_factory.test_cluster.get_all_generatable_types()
-                    ),
+                    parameter_type=test_factory.test_cluster.select_concrete_type(ANY),
                     position=position,
                     recursion_depth=recursion_depth + 1,
                     allow_none=allow_none,

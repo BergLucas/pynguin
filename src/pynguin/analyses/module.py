@@ -445,7 +445,7 @@ class TestCluster(abc.ABC):  # noqa: PLR0904
         """
 
     @abc.abstractmethod
-    def set_concrete_weight(self, typ: ProperType, weight: int) -> None:
+    def set_concrete_weight(self, typ: ProperType, weight: float) -> None:
         """Set the concrete weight for the type.
 
         Args:
@@ -575,7 +575,7 @@ class ModuleTestCluster(TestCluster):  # noqa: PLR0904
         self.__generators: dict[ProperType, OrderedSet[GenericAccessibleObject]] = (
             defaultdict(OrderedSet)
         )
-        self.__concrete_weights: dict[ProperType, int] = {}
+        self.__concrete_weights: dict[ProperType, float] = {}
 
         # Modifier belong to a certain class, not type.
         self.__modifiers: dict[TypeInfo, OrderedSet[GenericAccessibleObject]] = (
@@ -833,19 +833,19 @@ class ModuleTestCluster(TestCluster):  # noqa: PLR0904
         generatable.update(self.type_system.collection_proper_types)
         return list(generatable)
 
-    def set_concrete_weight(self, typ: ProperType, weight: int) -> None:  # noqa: D102
+    def set_concrete_weight(self, typ: ProperType, weight: float) -> None:  # noqa: D102
         self.__concrete_weights[typ] = weight
 
     def select_concrete_type(self, typ: ProperType) -> ProperType:  # noqa: D102
         if isinstance(typ, AnyType):
             all_generatable_types = self.get_all_generatable_types()
             weights = [
-                self.__concrete_weights.get(generatable_type, 100)
+                self.__concrete_weights.get(generatable_type, 100.0)
                 for generatable_type in all_generatable_types
             ]
             typ = randomness.choices(all_generatable_types, weights=weights)[0]
         if isinstance(typ, UnionType):
-            weights = [self.__concrete_weights.get(item, 100) for item in typ.items]
+            weights = [self.__concrete_weights.get(item, 100.0) for item in typ.items]
             typ = self.select_concrete_type(
                 randomness.choices(typ.items, weights=weights)[0]
             )
@@ -1058,7 +1058,7 @@ class FilteredModuleTestCluster(TestCluster):  # noqa: PLR0904
     def get_all_generatable_types(self) -> list[ProperType]:  # noqa: D102
         return self.__delegate.get_all_generatable_types()
 
-    def set_concrete_weight(self, typ: ProperType, weight: int) -> None:  # noqa: D102
+    def set_concrete_weight(self, typ: ProperType, weight: float) -> None:  # noqa: D102
         self.__delegate.set_concrete_weight(typ, weight)
 
     def select_concrete_type(self, typ: ProperType) -> ProperType:  # noqa: D102

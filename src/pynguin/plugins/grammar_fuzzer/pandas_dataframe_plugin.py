@@ -71,7 +71,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--pandas_dataframe_min_field_length",
         type=int,
-        default=0,
+        default=1,
         help="Minimum length of a field in the generated Pandas dataframe",
     )
     parser.add_argument(
@@ -95,7 +95,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--pandas_dataframe_min_non_terminal",
         type=int,
-        default=10,
+        default=0,
         help="Minimum number of non-terminal symbols in the grammar",
     )
     parser.add_argument(

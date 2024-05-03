@@ -317,11 +317,17 @@ class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]])
         return [GrammarDerivationNode(rule)]
 
     def visit_repeat(self, repeat: Repeat) -> list[GrammarDerivationTree]:  # noqa: D102
-        repeat_max = repeat.min + 100 if repeat.max is None else repeat.max
+        children: list[GrammarDerivationTree] = [
+            GrammarDerivationNode(repeat.rule) for _ in range(repeat.min - 1)
+        ]
 
-        nb_repeats = randomness.next_int(repeat.min, repeat_max + 1)
+        if repeat.max is None or repeat.max > repeat.min:
+            new_repeat_max = repeat.max - 1 if repeat.max is not None else None
+            new_repeat = Repeat(repeat.rule, 0, new_repeat_max)
+            rule = Choice(rules=(repeat.rule, new_repeat))
+            children.append(GrammarDerivationNode(rule))
 
-        return [GrammarDerivationNode(repeat.rule) for _ in range(nb_repeats)]
+        return children
 
 
 class GrammarRuleCostExpander(GrammarRuleRandomExpander):

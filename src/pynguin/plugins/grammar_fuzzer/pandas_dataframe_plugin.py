@@ -38,67 +38,98 @@ from pynguin.utils import randomness
 NAME = "pandas_dataframe_fuzzer"
 
 pandas_dataframe_weight: float = 0.0
-min_nb_columns: int = 0
-max_nb_columns: int = 0
-min_field_length: int = 0
-min_non_terminal: int = 0
-max_non_terminal: int = 0
+pandas_dataframe_min_columns_number: int = 0
+pandas_dataframe_max_columns_number: int = 0
+pandas_dataframe_min_field_length: int = 0
+pandas_dataframe_max_field_length: int = 0
+pandas_dataframe_min_rows_number: int = 0
+pandas_dataframe_max_rows_number: int = 0
+pandas_dataframe_min_non_terminal: int = 0
+pandas_dataframe_max_non_terminal: int = 0
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
-        "--dataframe_weight",
+        "--pandas_dataframe_weight",
         type=float,
         default=0.0,
-        help="""Weight to use a Pandas dataframe object as parameter type
-        during test generation. Expects values > 0""",
+        help="""Weight to use a Pandas dataframe object as parameter type."""
+        """Expects values > 0""",
     )
     parser.add_argument(
-        "--min_nb_columns",
+        "--pandas_dataframe_min_columns_number",
         type=int,
         default=1,
-        help="""Minimum number of columns in the CSV file-like object""",
+        help="Minimum number of columns in the generated Pandas dataframe",
     )
     parser.add_argument(
-        "--max_nb_columns",
+        "--pandas_dataframe_max_columns_number",
         type=int,
         default=10,
-        help="""Maximum number of columns in the CSV file-like object""",
+        help="Maximum number of columns in the generated Pandas dataframe",
     )
     parser.add_argument(
-        "--min_field_length",
+        "--pandas_dataframe_min_field_length",
         type=int,
-        default=2,
-        help="""Minimum length of a field in the CSV file-like object""",
+        default=0,
+        help="Minimum length of a field in the generated Pandas dataframe",
     )
     parser.add_argument(
-        "--min_non_terminal",
+        "--pandas_dataframe_max_field_length",
         type=int,
         default=10,
-        help="""Minimum number of non-terminal symbols in the grammar""",
+        help="Maximum length of a field in the generated Pandas dataframe",
     )
     parser.add_argument(
-        "--max_non_terminal",
+        "--pandas_dataframe_min_rows_number",
+        type=int,
+        default=1,
+        help="Minimum number of rows in the generated Pandas dataframe",
+    )
+    parser.add_argument(
+        "--pandas_dataframe_max_rows_number",
+        type=int,
+        default=10,
+        help="Maximum number of rows in the generated Pandas dataframe",
+    )
+    parser.add_argument(
+        "--pandas_dataframe_min_non_terminal",
+        type=int,
+        default=10,
+        help="Minimum number of non-terminal symbols in the grammar",
+    )
+    parser.add_argument(
+        "--pandas_dataframe_max_non_terminal",
         type=int,
         default=25,
-        help="""Maximum number of non-terminal symbols in the grammar""",
+        help="Maximum number of non-terminal symbols in the grammar",
     )
 
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global pandas_dataframe_weight  # noqa: PLW0603
-    global min_nb_columns  # noqa: PLW0603
-    global max_nb_columns  # noqa: PLW0603
-    global min_field_length  # noqa: PLW0603
-    global min_non_terminal  # noqa: PLW0603
-    global max_non_terminal  # noqa: PLW0603
+    global pandas_dataframe_min_columns_number  # noqa: PLW0603
+    global pandas_dataframe_max_columns_number  # noqa: PLW0603
+    global pandas_dataframe_min_field_length  # noqa: PLW0603
+    global pandas_dataframe_max_field_length  # noqa: PLW0603
+    global pandas_dataframe_min_rows_number  # noqa: PLW0603
+    global pandas_dataframe_max_rows_number  # noqa: PLW0603
+    global pandas_dataframe_min_non_terminal  # noqa: PLW0603
+    global pandas_dataframe_max_non_terminal  # noqa: PLW0603
 
     pandas_dataframe_weight = plugin_config.pandas_dataframe_weight
-    min_nb_columns = plugin_config.min_nb_columns
-    max_nb_columns = plugin_config.max_nb_columns
-    min_field_length = plugin_config.min_field_length
-    min_non_terminal = plugin_config.min_non_terminal
-    max_non_terminal = plugin_config.max_non_terminal
+    pandas_dataframe_min_columns_number = (
+        plugin_config.pandas_dataframe_min_columns_number
+    )
+    pandas_dataframe_max_columns_number = (
+        plugin_config.pandas_dataframe_max_columns_number
+    )
+    pandas_dataframe_min_field_length = plugin_config.pandas_dataframe_min_field_length
+    pandas_dataframe_max_field_length = plugin_config.pandas_dataframe_min_field_length
+    pandas_dataframe_min_rows_number = plugin_config.pandas_dataframe_min_rows_number
+    pandas_dataframe_max_rows_number = plugin_config.pandas_dataframe_max_rows_number
+    pandas_dataframe_min_non_terminal = plugin_config.pandas_dataframe_min_non_terminal
+    pandas_dataframe_max_non_terminal = plugin_config.pandas_dataframe_max_non_terminal
 
 
 def ast_transformer_hook(  # noqa: D103
@@ -160,13 +191,22 @@ class PandasVariableGenerator(VariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
+        columns_number = randomness.next_int(
+            pandas_dataframe_min_columns_number, pandas_dataframe_max_columns_number
+        )
+
         csv_grammar = create_csv_grammar(
-            randomness.next_int(min_nb_columns, max_nb_columns),
-            min_field_length=min_field_length,
+            columns_number=columns_number,
+            min_field_length=pandas_dataframe_min_field_length,
+            max_field_length=pandas_dataframe_max_field_length,
+            min_rows_number=pandas_dataframe_min_rows_number,
+            max_rows_number=pandas_dataframe_max_rows_number,
         )
 
         csv_grammar_fuzzer = GrammarFuzzer(
-            csv_grammar, min_non_terminal, max_non_terminal
+            csv_grammar,
+            pandas_dataframe_min_non_terminal,
+            pandas_dataframe_max_non_terminal,
         )
 
         string_io_ret = test_case.add_variable_creating_statement(

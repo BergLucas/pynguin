@@ -48,11 +48,14 @@ if TYPE_CHECKING:
 NAME = "csv_fuzzer"
 
 csv_weight: float = 0.0
-min_nb_columns: int = 0
-max_nb_columns: int = 0
-min_field_length: int = 0
-min_non_terminal: int = 0
-max_non_terminal: int = 0
+csv_min_columns_number: int = 0
+csv_max_columns_number: int = 0
+csv_min_field_length: int = 0
+csv_max_field_length: int = 0
+csv_min_rows_number: int = 0
+csv_max_rows_number: int = 0
+csv_min_non_terminal: int = 0
+csv_max_non_terminal: int = 0
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -60,55 +63,79 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         "--csv_weight",
         type=float,
         default=100.0,
-        help="""Weight to use a CSV file-like object as parameter type during test generation.
-        Expects values > 0""",  # noqa: E501
+        help="""Weight to use a CSV file-like object as parameter type."""
+        """Expects values > 0""",
     )
     parser.add_argument(
-        "--min_nb_columns",
+        "--csv_min_columns_number",
         type=int,
         default=1,
-        help="""Minimum number of columns in the CSV file-like object""",
+        help="Minimum number of columns in the CSV file-like object",
     )
     parser.add_argument(
-        "--max_nb_columns",
+        "--csv_max_columns_number",
         type=int,
         default=10,
-        help="""Maximum number of columns in the CSV file-like object""",
+        help="Maximum number of columns in the CSV file-like object",
     )
     parser.add_argument(
-        "--min_field_length",
+        "--csv_min_field_length",
         type=int,
-        default=2,
-        help="""Minimum length of a field in the CSV file-like object""",
+        default=0,
+        help="Minimum length of a field in the CSV file-like object",
     )
     parser.add_argument(
-        "--min_non_terminal",
+        "--csv_max_field_length",
         type=int,
         default=10,
-        help="""Minimum number of non-terminal symbols in the grammar""",
+        help="Maximum length of a field in the CSV file-like object",
     )
     parser.add_argument(
-        "--max_non_terminal",
+        "--csv_min_rows_number",
+        type=int,
+        default=1,
+        help="Minimum number of rows in the CSV file-like object",
+    )
+    parser.add_argument(
+        "--csv_max_rows_number",
+        type=int,
+        default=10,
+        help="Maximum number of rows in the CSV file-like object",
+    )
+    parser.add_argument(
+        "--csv_min_non_terminal",
+        type=int,
+        default=10,
+        help="Minimum number of non-terminal symbols in the grammar",
+    )
+    parser.add_argument(
+        "--csv_max_non_terminal",
         type=int,
         default=25,
-        help="""Maximum number of non-terminal symbols in the grammar""",
+        help="Maximum number of non-terminal symbols in the grammar",
     )
 
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_weight  # noqa: PLW0603
-    global min_nb_columns  # noqa: PLW0603
-    global max_nb_columns  # noqa: PLW0603
-    global min_field_length  # noqa: PLW0603
-    global min_non_terminal  # noqa: PLW0603
-    global max_non_terminal  # noqa: PLW0603
+    global csv_min_columns_number  # noqa: PLW0603
+    global csv_max_columns_number  # noqa: PLW0603
+    global csv_min_field_length  # noqa: PLW0603
+    global csv_max_field_length  # noqa: PLW0603
+    global csv_min_rows_number  # noqa: PLW0603
+    global csv_max_rows_number  # noqa: PLW0603
+    global csv_min_non_terminal  # noqa: PLW0603
+    global csv_max_non_terminal  # noqa: PLW0603
 
     csv_weight = plugin_config.csv_weight
-    min_nb_columns = plugin_config.min_nb_columns
-    max_nb_columns = plugin_config.max_nb_columns
-    min_field_length = plugin_config.min_field_length
-    min_non_terminal = plugin_config.min_non_terminal
-    max_non_terminal = plugin_config.max_non_terminal
+    csv_min_columns_number = plugin_config.csv_min_columns_number
+    csv_max_columns_number = plugin_config.csv_max_columns_number
+    csv_min_field_length = plugin_config.csv_min_field_length
+    csv_max_field_length = plugin_config.csv_max_field_length
+    csv_min_rows_number = plugin_config.csv_min_rows_number
+    csv_max_rows_number = plugin_config.csv_max_rows_number
+    csv_min_non_terminal = plugin_config.csv_min_non_terminal
+    csv_max_non_terminal = plugin_config.csv_max_non_terminal
 
 
 def types_hook() -> list[type | tuple[type, str]]:  # noqa: D103
@@ -220,13 +247,22 @@ class CsvVariableGenerator(VariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
+        columns_number = randomness.next_int(
+            csv_min_columns_number, csv_max_columns_number
+        )
+
         csv_grammar = create_csv_grammar(
-            randomness.next_int(min_nb_columns, max_nb_columns),
-            min_field_length=min_field_length,
+            columns_number=columns_number,
+            min_field_length=csv_min_field_length,
+            max_field_length=csv_max_field_length,
+            min_rows_number=csv_min_rows_number,
+            max_rows_number=csv_max_rows_number,
         )
 
         csv_grammar_fuzzer = GrammarFuzzer(
-            csv_grammar, min_non_terminal, max_non_terminal
+            csv_grammar,
+            csv_min_non_terminal,
+            csv_max_non_terminal,
         )
 
         string_io_ret = test_case.add_variable_creating_statement(

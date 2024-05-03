@@ -75,7 +75,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--csv_max_columns_number",
         type=int,
-        default=10,
+        default=5,
         help="Maximum number of columns in the CSV file-like object",
     )
     parser.add_argument(
@@ -99,7 +99,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--csv_max_rows_number",
         type=int,
-        default=10,
+        default=5,
         help="Maximum number of rows in the CSV file-like object",
     )
     parser.add_argument(

@@ -1538,22 +1538,22 @@ class TypeSystem:  # noqa: PLR0904
         if type_annotations is None:
             return {}
 
-        defaults = typing._get_defaults(method)  # type: ignore[attr-defined]
+        defaults = typing._get_defaults(method)  # type: ignore[attr-defined] # noqa: SLF001
 
         hints = {}
         for name, value in type_annotations.items():
             if value is None:
-                value = type(None)
+                value = type(None)  # noqa: PLW2901
 
             if isinstance(value, str):
-                value = ForwardRef(
+                value = ForwardRef(  # noqa: PLW2901
                     value,
                     is_argument=True,
                     is_class=False,
                 )
                 globalns = vars(typing)
                 try:
-                    value = typing._eval_type(  # type: ignore[attr-defined]
+                    value = typing._eval_type(  # type: ignore[attr-defined] # noqa: SLF001, PLW2901
                         value, globalns, globalns
                     )
                 except (AttributeError, NameError, TypeError) as exc:
@@ -1566,12 +1566,12 @@ class TypeSystem:  # noqa: PLR0904
                     continue
 
             if name in defaults:
-                value = typing.Optional[value]
+                value |= None  # noqa: PLW2901
 
             hints[name] = value
 
         return {
-            k: typing._strip_annotations(t)  # type: ignore[attr-defined]
+            k: typing._strip_annotations(t)  # type: ignore[attr-defined] # noqa: SLF001
             for k, t in hints.items()
         }
 

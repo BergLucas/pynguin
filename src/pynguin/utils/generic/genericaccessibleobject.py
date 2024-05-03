@@ -41,13 +41,15 @@ if typing.TYPE_CHECKING:
 class GenericAccessibleObject(abc.ABC):
     """Abstract base class for something that can be accessed."""
 
-    def __init__(self, owner: TypeInfo | None):
+    def __init__(self, owner: TypeInfo | None, exporter_module: str | None = None):
         """Constructor.
 
         Args:
             owner: The owning type
+            exporter_module: The optional module where the accessible object is exported
         """
         self._owner = owner
+        self._exporter_module = exporter_module
 
     @abc.abstractmethod
     def generated_type(self) -> ProperType:
@@ -65,6 +67,18 @@ class GenericAccessibleObject(abc.ABC):
             The owner of this accessible object
         """
         return self._owner
+
+    @property
+    def exporter_module(self) -> str | None:
+        """The module where the accessible object is exported.
+
+        Returns:
+            The module where the accessible object is exported
+        """
+        if self._exporter_module is None and self._owner is not None:
+            return self._owner.module
+
+        return self._exporter_module
 
     def is_enum(self) -> bool:
         """Is this an enum?
@@ -136,13 +150,14 @@ class GenericAccessibleObject(abc.ABC):
 class GenericEnum(GenericAccessibleObject):
     """Models an enum."""
 
-    def __init__(self, owner: TypeInfo):
+    def __init__(self, owner: TypeInfo, exporter_module: str | None = None):
         """Constructs an enum-representing object.
 
         Args:
             owner: The owning class
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(owner)
+        super().__init__(owner, exporter_module)
         self._generated_type = Instance(owner)
         self._names = [
             e.name
@@ -194,6 +209,7 @@ class GenericCallableAccessibleObject(GenericAccessibleObject, abc.ABC):
         callable_: TypesOfCallables,
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
+        exporter_module: str | None = None,
     ) -> None:
         """Initializes the object.
 
@@ -202,8 +218,9 @@ class GenericCallableAccessibleObject(GenericAccessibleObject, abc.ABC):
             callable_: The callable itself
             inferred_signature: The signature of the callable
             raised_exceptions: A set of raised exceptions, if any exist
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(owner)
+        super().__init__(owner, exporter_module)
         self._callable = callable_
         self._inferred_signature = inferred_signature
         self._raised_exceptions = raised_exceptions
@@ -255,6 +272,7 @@ class GenericConstructor(GenericCallableAccessibleObject):
         owner: TypeInfo,
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
+        exporter_module: str | None = None,
     ) -> None:
         """Initializes a constructor-representing object.
 
@@ -262,12 +280,14 @@ class GenericConstructor(GenericCallableAccessibleObject):
             owner: The owning class type
             inferred_signature: The signature
             raised_exceptions: A set of raised exceptions, if there are any
+            exporter_module: The optional module where the accessible object is exported
         """
         super().__init__(
             owner,
             owner.raw_type.__init__,  # type: ignore[misc]
             inferred_signature,
             raised_exceptions,
+            exporter_module,
         )
         self._generated_type = Instance(owner)
 
@@ -298,13 +318,14 @@ class GenericConstructor(GenericCallableAccessibleObject):
 class GenericMethod(GenericCallableAccessibleObject):
     """A method."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         owner: TypeInfo,
         method: TypesOfCallables,
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
         method_name: str | None = None,
+        exporter_module: str | None = None,
     ) -> None:
         """Initializes a new method-representing object.
 
@@ -314,8 +335,11 @@ class GenericMethod(GenericCallableAccessibleObject):
             inferred_signature: The signature of the method
             raised_exceptions: A set of raised exceptions, if there are any
             method_name: The optional name of the method
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(owner, method, inferred_signature, raised_exceptions)
+        super().__init__(
+            owner, method, inferred_signature, raised_exceptions, exporter_module
+        )
         self._generated_type = inferred_signature.return_type
         self._method_name = method_name
 
@@ -373,6 +397,7 @@ class GenericFunction(GenericCallableAccessibleObject):
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
         function_name: str | None = None,
+        exporter_module: str | None = None,
     ) -> None:
         """Initializes the function-representing object.
 
@@ -382,9 +407,12 @@ class GenericFunction(GenericCallableAccessibleObject):
             raised_exceptions: A set of raised exceptions, might be empty if there are
                                none
             function_name: The optional name of the function
+            exporter_module: The optional module where the accessible object is exported
         """
         self._function_name = function_name
-        super().__init__(None, function, inferred_signature, raised_exceptions)
+        super().__init__(
+            None, function, inferred_signature, raised_exceptions, exporter_module
+        )
 
     def is_function(self) -> bool:  # noqa: D102
         return True
@@ -422,7 +450,11 @@ class GenericAbstractField(GenericAccessibleObject, abc.ABC):
     """Abstract superclass for fields."""
 
     def __init__(
-        self, owner: TypeInfo | None, field: str, field_type: ProperType
+        self,
+        owner: TypeInfo | None,
+        field: str,
+        field_type: ProperType,
+        exporter_module: str | None = None,
     ) -> None:
         """Constructs the new abstract field object.
 
@@ -430,8 +462,9 @@ class GenericAbstractField(GenericAccessibleObject, abc.ABC):
             owner: An optional type of the field owner (if any)
             field: The name of the field
             field_type: The type of the field
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(owner)
+        super().__init__(owner, exporter_module)
         self._field = field
         self._field_type = field_type
 
@@ -454,15 +487,22 @@ class GenericAbstractField(GenericAccessibleObject, abc.ABC):
 class GenericField(GenericAbstractField):
     """A field of an object."""
 
-    def __init__(self, owner: TypeInfo, field: str, field_type: ProperType):
+    def __init__(
+        self,
+        owner: TypeInfo,
+        field: str,
+        field_type: ProperType,
+        exporter_module: str | None = None,
+    ):
         """Initializes a new field wrapper.
 
         Args:
             owner: The owner of the field
             field: The name of the field
             field_type: The type of the field
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(owner, field, field_type)
+        super().__init__(owner, field, field_type, exporter_module)
         assert owner is not None, "Field must have an owner"
 
     def get_dependencies(  # noqa: D102
@@ -496,15 +536,22 @@ class GenericField(GenericAbstractField):
 class GenericStaticField(GenericAbstractField):
     """Static field of a class."""
 
-    def __init__(self, owner: TypeInfo, field: str, field_type: ProperType):
+    def __init__(
+        self,
+        owner: TypeInfo,
+        field: str,
+        field_type: ProperType,
+        exporter_module: str | None = None,
+    ):
         """Initializes a new object for a static field.
 
         Args:
             owner: The owner class of the static field
             field: The name of the field
             field_type: The type of the field
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(owner, field, field_type)
+        super().__init__(owner, field, field_type, exporter_module)
         assert owner is not None, "Field must have an owner"
 
     def is_static(self) -> bool:  # noqa: D102
@@ -542,15 +589,25 @@ class GenericStaticModuleField(GenericAbstractField):
 
     # TODO(fk) combine with regular static field?
 
-    def __init__(self, module: str, field: str, field_type: ProperType) -> None:
+    def __init__(
+        self,
+        module: str,
+        field: str,
+        field_type: ProperType,
+        exporter_module: str | None = None,
+    ) -> None:
         """Constructs the object.
 
         Args:
             module: Name of the module the field is declared in
             field: The name of the field
             field_type: The type of the field
+            exporter_module: The optional module where the accessible object is exported
         """
-        super().__init__(None, field, field_type)
+        if exporter_module is None:
+            exporter_module = module
+
+        super().__init__(None, field, field_type, exporter_module)
         self._module = module
 
     def is_static(self) -> bool:  # noqa: D102

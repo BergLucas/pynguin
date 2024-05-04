@@ -7,8 +7,6 @@
 """Provides a grammar-based fuzzer for generating test data."""
 from __future__ import annotations
 
-import sys
-
 from abc import abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
@@ -206,7 +204,7 @@ class GrammarDerivationTreeMutator(GrammarDerivationTreeVisitor[bool]):
         return any(child.accept(self) for child in shuffled_children)
 
 
-class GrammarRuleCost(GrammarRuleVisitor[int | None]):
+class GrammarRuleCost(GrammarRuleVisitor[float]):
     """A visitor that calculates the cost of a rule."""
 
     def __init__(self, grammar: Grammar) -> None:
@@ -218,65 +216,35 @@ class GrammarRuleCost(GrammarRuleVisitor[int | None]):
         self._grammar = grammar
         self._seen_references: set[RuleReference] = set()
 
-    def visit_constant(self, constant: Constant) -> int:  # noqa: D102
-        return 1
+    def visit_constant(self, constant: Constant) -> float:  # noqa: D102
+        return 1.0
 
-    def visit_sequence(self, sequence: Sequence) -> int | None:  # noqa: D102
-        rules_cost = 1
-
-        for rule in sequence.rules:
-            rule_cost = rule.accept(self)
-
-            if rule_cost is None:
-                return None
-
-            rules_cost += rule_cost
-
-        return rules_cost
+    def visit_sequence(self, sequence: Sequence) -> float:  # noqa: D102
+        return 1.0 + sum(rule.accept(self) for rule in sequence.rules)
 
     def visit_rule_reference(  # noqa: D102
         self, rule_reference: RuleReference
-    ) -> int | None:
+    ) -> float:
         if rule_reference in self._seen_references:
-            return None
+            return float("inf")
 
         self._seen_references.add(rule_reference)
 
         rule = self._grammar.rules[rule_reference.name]
 
-        rule_cost = rule.accept(self)
+        return 1.0 + rule.accept(self)
 
-        if rule_cost is None:
-            return None
+    def visit_any_char(self, any_char: AnyChar) -> float:  # noqa: D102
+        return 1.0
 
-        return 1 + rule_cost
+    def visit_choice(self, choice: Choice) -> float:  # noqa: D102
+        return 1.0 + min(rule.accept(self) for rule in choice.rules)
 
-    def visit_any_char(self, any_char: AnyChar) -> int:  # noqa: D102
-        return 1
-
-    def visit_choice(self, choice: Choice) -> int | None:  # noqa: D102
-        min_rule_cost = sys.maxsize
-
-        for rule in choice.rules:
-            rule_cost = rule.accept(self)
-
-            if rule_cost is None:
-                return None
-
-            min_rule_cost = min(min_rule_cost, rule_cost)
-
-        return 1 + min_rule_cost
-
-    def visit_repeat(self, repeat: Repeat) -> int | None:  # noqa: D102
+    def visit_repeat(self, repeat: Repeat) -> float:  # noqa: D102
         if repeat.max is None:
-            return None
+            return float("inf")
 
-        rule_cost = repeat.rule.accept(self)
-
-        if rule_cost is None:
-            return None
-
-        return 1 + rule_cost * repeat.min
+        return 1 + repeat.rule.accept(self) * repeat.min
 
 
 class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]]):
@@ -317,28 +285,29 @@ class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]])
         return [GrammarDerivationNode(rule)]
 
     def visit_repeat(self, repeat: Repeat) -> list[GrammarDerivationTree]:  # noqa: D102
-        if repeat.max is not None and repeat.max == 0:
-            return []
+        rules: list[GrammarDerivationTree] = [
+            GrammarDerivationNode(repeat.rule) for _ in range(repeat.min)
+        ]
 
-        new_repeat_min = repeat.min - 1 if repeat.min > 0 else 0
-        new_repeat_max = repeat.max - 1 if repeat.max is not None else None
+        if repeat.min == repeat.max:
+            return rules
 
-        new_repeat = Repeat(repeat.rule, new_repeat_min, new_repeat_max)
+        new_repeat_max = repeat.max - repeat.min - 1 if repeat.max is not None else None
 
-        rule: GrammarRule
-        if new_repeat_min == 0:
-            rule = Choice(rules=(repeat.rule, new_repeat))
-        else:
-            rule = Sequence(rules=(repeat.rule, new_repeat))
+        new_repeat = Repeat(repeat.rule, min=0, max=new_repeat_max)
 
-        return [GrammarDerivationNode(rule)]
+        rule = Choice(rules=(repeat.rule, new_repeat))
+
+        rules.append(GrammarDerivationNode(rule))
+
+        return rules
 
 
 class GrammarRuleCostExpander(GrammarRuleRandomExpander):
     """A visitor that generates rules expansions based on a cost function."""
 
     def __init__(
-        self, grammar: Grammar, cost_function: Callable[[Iterable[int]], int]
+        self, grammar: Grammar, cost_function: Callable[[Iterable[float]], float]
     ) -> None:
         """Create a new grammar expander.
 
@@ -349,26 +318,13 @@ class GrammarRuleCostExpander(GrammarRuleRandomExpander):
         super().__init__(grammar)
         self._cost_function = cost_function
 
-    def _rule_cost(self, rule: GrammarRule) -> int:
-        rule_cost = rule.accept(GrammarRuleCost(self._grammar))
-
-        if rule_cost is None:
-            return sys.maxsize
-
-        return rule_cost
-
     def visit_choice(self, choice: Choice) -> list[GrammarDerivationTree]:  # noqa: D102
-        rule_costs = {self._rule_cost(rule): rule for rule in choice.rules}
+        rule_costs = {
+            rule.accept(GrammarRuleCost(self._grammar)): rule for rule in choice.rules
+        }
         best_rule_cost = self._cost_function(rule_costs)
         rule = rule_costs[best_rule_cost]
         return [GrammarDerivationNode(rule)]
-
-    def visit_repeat(self, repeat: Repeat) -> list[GrammarDerivationTree]:  # noqa: D102
-        repeat_max = sys.maxsize if repeat.max is None else repeat.max
-
-        nb_repeats = self._cost_function((repeat.min, repeat_max))
-
-        return [GrammarDerivationNode(repeat.rule) for _ in range(nb_repeats)]
 
 
 class GrammarFuzzer:

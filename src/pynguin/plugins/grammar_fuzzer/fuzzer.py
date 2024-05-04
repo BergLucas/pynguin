@@ -244,7 +244,7 @@ class GrammarRuleCost(GrammarRuleVisitor[float]):
         if repeat.max is None:
             return float("inf")
 
-        return 1 + repeat.rule.accept(self) * repeat.min
+        return 1.0 + repeat.rule.accept(self) * repeat.min + 1.0 + 1.0
 
 
 class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]]):

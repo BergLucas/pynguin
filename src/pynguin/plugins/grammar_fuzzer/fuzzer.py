@@ -218,11 +218,11 @@ class GrammarRuleCost(GrammarRuleVisitor[int | None]):
         self._grammar = grammar
         self._seen_references: set[RuleReference] = set()
 
-    def visit_constant(self, constant: Constant) -> int:  # noqa: D102
+    def visit_constant(self, constant: Constant) -> int | None:  # noqa: D102
         return 1
 
     def visit_sequence(self, sequence: Sequence) -> int | None:  # noqa: D102
-        rules_cost = 1
+        total = 1
 
         for rule in sequence.rules:
             rule_cost = rule.accept(self)
@@ -230,9 +230,9 @@ class GrammarRuleCost(GrammarRuleVisitor[int | None]):
             if rule_cost is None:
                 return None
 
-            rules_cost += rule_cost
+            total += rule_cost
 
-        return rules_cost
+        return total
 
     def visit_rule_reference(  # noqa: D102
         self, rule_reference: RuleReference
@@ -251,7 +251,7 @@ class GrammarRuleCost(GrammarRuleVisitor[int | None]):
 
         return 1 + rule_cost
 
-    def visit_any_char(self, any_char: AnyChar) -> int:  # noqa: D102
+    def visit_any_char(self, any_char: AnyChar) -> int | None:  # noqa: D102
         return 1
 
     def visit_choice(self, choice: Choice) -> int | None:  # noqa: D102
@@ -276,7 +276,7 @@ class GrammarRuleCost(GrammarRuleVisitor[int | None]):
         if rule_cost is None:
             return None
 
-        return 1 + rule_cost * repeat.min
+        return 1 + rule_cost * repeat.min + 1 + 1
 
 
 class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]]):
@@ -317,28 +317,33 @@ class GrammarRuleRandomExpander(GrammarRuleVisitor[list[GrammarDerivationTree]])
         return [GrammarDerivationNode(rule)]
 
     def visit_repeat(self, repeat: Repeat) -> list[GrammarDerivationTree]:  # noqa: D102
-        if repeat.max is not None and repeat.max == 0:
-            return []
+        nodes: list[GrammarDerivationTree] = [
+            GrammarDerivationNode(repeat.rule) for _ in range(repeat.min)
+        ]
 
-        new_repeat_min = repeat.min - 1 if repeat.min > 0 else 0
-        new_repeat_max = repeat.max - 1 if repeat.max is not None else None
+        if repeat.min == repeat.max:
+            return nodes
 
-        new_repeat = Repeat(repeat.rule, new_repeat_min, new_repeat_max)
+        new_repeat_max = repeat.max - repeat.min - 1 if repeat.max is not None else None
 
-        rule: GrammarRule
-        if new_repeat_min == 0:
-            rule = Choice(rules=(repeat.rule, new_repeat))
-        else:
-            rule = Sequence(rules=(repeat.rule, new_repeat))
+        new_repeat = Repeat(repeat.rule, min=0, max=new_repeat_max)
 
-        return [GrammarDerivationNode(rule)]
+        rule = Sequence(rules=(repeat.rule, new_repeat))
+
+        empty = Sequence(rules=())
+
+        choice_rule = Choice(rules=(empty, rule))
+
+        nodes.append(GrammarDerivationNode(choice_rule))
+
+        return nodes
 
 
 class GrammarRuleCostExpander(GrammarRuleRandomExpander):
     """A visitor that generates rules expansions based on a cost function."""
 
     def __init__(
-        self, grammar: Grammar, cost_function: Callable[[Iterable[int]], int]
+        self, grammar: Grammar, cost_function: Callable[[Iterable[float]], float]
     ) -> None:
         """Create a new grammar expander.
 
@@ -349,7 +354,7 @@ class GrammarRuleCostExpander(GrammarRuleRandomExpander):
         super().__init__(grammar)
         self._cost_function = cost_function
 
-    def _rule_cost(self, rule: GrammarRule) -> int:
+    def _rule_cost(self, rule: GrammarRule) -> float:
         rule_cost = rule.accept(GrammarRuleCost(self._grammar))
 
         if rule_cost is None:
@@ -362,13 +367,6 @@ class GrammarRuleCostExpander(GrammarRuleRandomExpander):
         best_rule_cost = self._cost_function(rule_costs)
         rule = rule_costs[best_rule_cost]
         return [GrammarDerivationNode(rule)]
-
-    def visit_repeat(self, repeat: Repeat) -> list[GrammarDerivationTree]:  # noqa: D102
-        repeat_max = sys.maxsize if repeat.max is None else repeat.max
-
-        nb_repeats = self._cost_function((repeat.min, repeat_max))
-
-        return [GrammarDerivationNode(repeat.rule) for _ in range(nb_repeats)]
 
 
 class GrammarFuzzer:

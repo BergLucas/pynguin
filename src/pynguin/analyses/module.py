@@ -308,7 +308,7 @@ def parse_module(module_name: str) -> _ModuleParseResult:
     )
 
 
-class TestCluster(abc.ABC):
+class TestCluster(abc.ABC):  # noqa: PLR0904
     """Interface for a test cluster."""
 
     @property
@@ -445,6 +445,15 @@ class TestCluster(abc.ABC):
         """
 
     @abc.abstractmethod
+    def set_concrete_weight(self, typ: ProperType, weight: float) -> None:
+        """Set the concrete weight for the type.
+
+        Args:
+            typ: The type
+            weight: The weight
+        """
+
+    @abc.abstractmethod
     def select_concrete_type(self, typ: ProperType) -> ProperType:
         """Select a concrete type from the given type.
 
@@ -566,6 +575,7 @@ class ModuleTestCluster(TestCluster):  # noqa: PLR0904
         self.__generators: dict[ProperType, OrderedSet[GenericAccessibleObject]] = (
             defaultdict(OrderedSet)
         )
+        self.__concrete_weights: dict[ProperType, float] = {}
 
         # Modifier belong to a certain class, not type.
         self.__modifiers: dict[TypeInfo, OrderedSet[GenericAccessibleObject]] = (
@@ -823,11 +833,22 @@ class ModuleTestCluster(TestCluster):  # noqa: PLR0904
         generatable.update(self.type_system.collection_proper_types)
         return list(generatable)
 
+    def set_concrete_weight(self, typ: ProperType, weight: float) -> None:  # noqa: D102
+        self.__concrete_weights[typ] = weight
+
     def select_concrete_type(self, typ: ProperType) -> ProperType:  # noqa: D102
         if isinstance(typ, AnyType):
-            typ = randomness.choice(self.get_all_generatable_types())
+            all_generatable_types = self.get_all_generatable_types()
+            weights = [
+                self.__concrete_weights.get(generatable_type, 100.0)
+                for generatable_type in all_generatable_types
+            ]
+            typ = randomness.choices(all_generatable_types, weights=weights)[0]
         if isinstance(typ, UnionType):
-            typ = self.select_concrete_type(randomness.choice(typ.items))
+            weights = [self.__concrete_weights.get(item, 100.0) for item in typ.items]
+            typ = self.select_concrete_type(
+                randomness.choices(typ.items, weights=weights)[0]
+            )
         return typ
 
     def track_statistics_values(  # noqa: D102
@@ -1036,6 +1057,9 @@ class FilteredModuleTestCluster(TestCluster):  # noqa: PLR0904
 
     def get_all_generatable_types(self) -> list[ProperType]:  # noqa: D102
         return self.__delegate.get_all_generatable_types()
+
+    def set_concrete_weight(self, typ: ProperType, weight: float) -> None:  # noqa: D102
+        self.__delegate.set_concrete_weight(typ, weight)
 
     def select_concrete_type(self, typ: ProperType) -> ProperType:  # noqa: D102
         return self.__delegate.select_concrete_type(typ)

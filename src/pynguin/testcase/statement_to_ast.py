@@ -306,7 +306,6 @@ def transform_enum_statement(
     """
     accessible_object = stmt.accessible_object()
     owner = accessible_object.owner
-    assert owner
 
     if store_call_return:
         targets = [
@@ -321,7 +320,7 @@ def transform_enum_statement(
         value=ast.Attribute(
             value=ast.Attribute(
                 value=create_module_alias(
-                    accessible_object.exporter_module, module_aliases
+                    accessible_object.exporter_module_name, module_aliases
                 ),
                 attr=owner.name,
                 ctx=ast.Load(),
@@ -391,14 +390,14 @@ def transform_constructor_statement(
     """
     accessible_object = stmt.accessible_object()
     owner = accessible_object.owner
-    assert owner
+
     args, kwargs = create_args(stmt, module_aliases, variable_names)
     call = ast.Call(
         func=ast.Attribute(
             attr=owner.name,
             ctx=ast.Load(),
             value=create_module_alias(
-                accessible_object.exporter_module, module_aliases
+                accessible_object.exporter_module_name, module_aliases
             ),
         ),
         args=args,

@@ -150,7 +150,6 @@ def _setup_test_cluster() -> ModuleTestCluster | None:
             _LOGGER.debug(
                 'Plugin "%s" does not have a test_cluster_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 
@@ -664,7 +663,6 @@ def _create_remover_functions():
             _LOGGER.debug(
                 'Plugin "%s" does not have a statement_remover_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 
@@ -834,7 +832,6 @@ def _create_variable_generators() -> dict:
             _LOGGER.debug(
                 'Plugin "%s" does not have a variable_generator_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 

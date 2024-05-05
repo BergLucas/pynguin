@@ -270,7 +270,6 @@ def _run_plugins_parser_hook(plugins: list[ModuleType], parser: ArgumentParser) 
             logging.debug(
                 'Plugin "%s" does not have a parser_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 
@@ -296,7 +295,6 @@ def _run_plugins_configuration_hook(
             logging.debug(
                 'Plugin "%s" does not have a configuration_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 

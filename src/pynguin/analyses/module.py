@@ -1546,7 +1546,6 @@ def __analyse_plugins_types(
             LOGGER.debug(
                 'Plugin "%s" does not have a types_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 

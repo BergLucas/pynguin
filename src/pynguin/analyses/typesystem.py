@@ -1554,11 +1554,15 @@ class TypeSystem:  # noqa: PLR0904
                 method,
             )
             _LOGGER.debug(exc)
-            hints = TypeSystem._get_type_hints_fallback(method)
+            hints = TypeSystem._get_type_hints_fallback(method, globalns, localns)
         return hints
 
     @staticmethod
-    def _get_type_hints_fallback(method: Callable) -> dict[str, Any]:
+    def _get_type_hints_fallback(
+        method: Callable,
+        globalns: dict[str, Any] | None,
+        localns: dict[str, Any] | None,
+    ) -> dict[str, Any]:
         type_annotations = getattr(method, "__annotations__", None)
 
         if type_annotations is None:
@@ -1577,10 +1581,9 @@ class TypeSystem:  # noqa: PLR0904
                     is_argument=True,
                     is_class=False,
                 )
-                globalns = vars(typing)
                 try:
                     value = typing._eval_type(  # type: ignore[attr-defined] # noqa: SLF001, PLW2901
-                        value, globalns, globalns
+                        value, globalns, localns
                     )
                 except (AttributeError, NameError, TypeError) as exc:
                     _LOGGER.debug(

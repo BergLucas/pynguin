@@ -99,7 +99,7 @@ def test_analyse_module(parsed_module_no_dependencies):
 def test_analyse_module_dependencies(parsed_module_complex_dependencies):
     test_cluster = analyse_module(parsed_module_complex_dependencies)
     assert test_cluster.num_accessible_objects_under_test() == 1
-    assert len(test_cluster.generators) == 4
+    assert len(test_cluster.generators) == 3
     assert len(test_cluster.modifiers) == 1
 
 

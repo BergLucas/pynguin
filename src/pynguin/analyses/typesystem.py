@@ -943,13 +943,7 @@ class InferredSignature:
                         InferredSignature._LIST_ELEMENT_FROM_ARGUMENT_TYPES_PATH,
                         argument_idx=0,
                     )
-                    args = (
-                        (
-                            guessed_element_type
-                            if guessed_element_type
-                            else guessed_type.args[0]
-                        ),
-                    )
+                    args = ((guessed_element_type or guessed_type.args[0]),)
                 case "builtins.set":
                     guessed_element_type = self._guess_generic_arguments(
                         knowledge,
@@ -959,13 +953,7 @@ class InferredSignature:
                         InferredSignature._SET_ELEMENT_FROM_ARGUMENT_TYPES_PATH,
                         argument_idx=0,
                     )
-                    args = (
-                        (
-                            guessed_element_type
-                            if guessed_element_type
-                            else guessed_type.args[0]
-                        ),
-                    )
+                    args = ((guessed_element_type or guessed_type.args[0]),)
                 case "builtins.dict":
                     guessed_key_type = self._guess_generic_arguments(
                         knowledge,
@@ -984,12 +972,8 @@ class InferredSignature:
                         argument_idx=1,
                     )
                     args = (
-                        guessed_key_type if guessed_key_type else guessed_type.args[0],
-                        (
-                            guessed_value_type
-                            if guessed_value_type
-                            else guessed_type.args[1]
-                        ),
+                        guessed_key_type or guessed_type.args[0],
+                        (guessed_value_type or guessed_type.args[1]),
                     )
             guessed_type = Instance(guessed_type.type, args)
         elif isinstance(guessed_type, TupleType):
@@ -1564,10 +1548,58 @@ class TypeSystem:  # noqa: PLR0904
             # typing.TYPE_CHECKING, e.g., to avoid circular imports, in which case this
             # also fails.
         except (AttributeError, NameError, TypeError) as exc:
-            _LOGGER.debug("Could not retrieve type hints for %s", method)
+            _LOGGER.debug(
+                "Could not retrieve type hints for %s,"
+                " falling back to finding builtin types",
+                method,
+            )
             _LOGGER.debug(exc)
-            hints = {}
+            hints = TypeSystem._get_type_hints_fallback(method)
         return hints
+
+    @staticmethod
+    def _get_type_hints_fallback(method: Callable) -> dict[str, Any]:
+        type_annotations = getattr(method, "__annotations__", None)
+
+        if type_annotations is None:
+            return {}
+
+        defaults = typing._get_defaults(method)  # type: ignore[attr-defined] # noqa: SLF001
+
+        hints = {}
+        for name, value in type_annotations.items():
+            if value is None:
+                value = type(None)  # noqa: PLW2901
+
+            if isinstance(value, str):
+                value = ForwardRef(  # noqa: PLW2901
+                    value,
+                    is_argument=True,
+                    is_class=False,
+                )
+                globalns = vars(typing)
+                try:
+                    value = typing._eval_type(  # type: ignore[attr-defined] # noqa: SLF001, PLW2901
+                        value, globalns, globalns
+                    )
+                except (AttributeError, NameError, TypeError) as exc:
+                    _LOGGER.debug(
+                        'Could not retrieve the type hint of arg "%s" for %s',
+                        name,
+                        method,
+                    )
+                    _LOGGER.debug(exc)
+                    continue
+
+            if name in defaults:
+                value |= None  # noqa: PLW2901
+
+            hints[name] = value
+
+        return {
+            k: typing._strip_annotations(t)  # type: ignore[attr-defined] # noqa: SLF001
+            for k, t in hints.items()
+        }
 
     def infer_signature(
         self,
@@ -1782,7 +1814,7 @@ class TypeSystem:  # noqa: PLR0904
             args = tuple(result.args)
             if len(result.args) < result.type.num_hardcoded_generic_parameters:
                 # Fill with AnyType if to small
-                args = args + (ANY,) * (
+                args += (ANY,) * (
                     result.type.num_hardcoded_generic_parameters - len(args)
                 )
             elif len(result.args) > result.type.num_hardcoded_generic_parameters:

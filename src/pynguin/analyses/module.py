@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import abc
+import ast
 import builtins
 import dataclasses
 import enum
@@ -42,6 +43,7 @@ from pynguin.analyses.syntaxtree import astroid_to_ast
 from pynguin.analyses.syntaxtree import get_class_node_from_ast
 from pynguin.analyses.syntaxtree import get_function_description
 from pynguin.analyses.syntaxtree import get_function_node_from_ast
+from pynguin.analyses.syntaxtree import to_code
 from pynguin.analyses.typesystem import ANY
 from pynguin.analyses.typesystem import AnyType
 from pynguin.analyses.typesystem import Instance
@@ -292,6 +294,8 @@ def parse_module(module_name: str) -> _ModuleParseResult:
             path=source_file if source_file is not None else "",
         )
         linenos = len(source_code.splitlines())
+
+        __analyse_type_checking(module, syntax_tree)
 
     except (TypeError, OSError) as error:
         LOGGER.debug(
@@ -1103,6 +1107,7 @@ def __analyse_function(
     func_name: str,
     func: FunctionType,
     type_inference_strategy: TypeInferenceStrategy,
+    globalns: dict[str, Any],
     module: ModuleType | None,
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
@@ -1122,6 +1127,7 @@ def __analyse_function(
     inferred_signature = test_cluster.type_system.infer_type_info(
         func,
         type_inference_strategy=type_inference_strategy,
+        globalns=globalns,
     )
     func_ast = get_function_node_from_ast(module_tree, func_name)
     description = get_function_description(func_ast)
@@ -1145,6 +1151,7 @@ def __analyse_class(
     *,
     type_info: TypeInfo,
     type_inference_strategy: TypeInferenceStrategy,
+    globalns: dict[str, Any],
     module: ModuleType | None,
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
@@ -1176,6 +1183,8 @@ def __analyse_class(
             test_cluster.type_system.infer_type_info(
                 type_info.raw_type.__init__,
                 type_inference_strategy=type_inference_strategy,
+                globalns=globalns,
+                localns=vars(type_info.raw_type),  # type: ignore[arg-type]
             ),
             raised_exceptions,
             module,
@@ -1209,6 +1218,8 @@ def __analyse_class(
             method_name=method_name,
             method=method,
             type_inference_strategy=type_inference_strategy,
+            globalns=globalns,
+            localns=vars(type_info.raw_type),  # type: ignore[arg-type]
             module=module,
             class_tree=class_ast,
             test_cluster=test_cluster,
@@ -1255,6 +1266,8 @@ def __analyse_method(
         | MethodDescriptorType
     ),
     type_inference_strategy: TypeInferenceStrategy,
+    globalns: dict[str, Any],
+    localns: dict[str, Any],
     module: ModuleType | None,
     class_tree: astroid.ClassDef | None,
     test_cluster: ModuleTestCluster,
@@ -1279,6 +1292,8 @@ def __analyse_method(
     inferred_signature = test_cluster.type_system.infer_type_info(
         method,
         type_inference_strategy=type_inference_strategy,
+        globalns=globalns,
+        localns=localns,
     )
     method_ast = get_function_node_from_ast(class_tree, method_name)
     description = get_function_description(method_ast)
@@ -1313,6 +1328,9 @@ def __resolve_dependencies(
 ) -> None:
     parse_results: dict[str, _ModuleParseResult] = _ParseResults()
     parse_results[root_module.module_name] = root_module
+
+    if root_module.syntax_tree is not None:
+        __analyse_type_checking(root_module.module, root_module.syntax_tree)
 
     # Provide a set of seen modules, classes and functions for fixed-point iteration
     seen_modules: set[ModuleType] = set()
@@ -1426,6 +1444,7 @@ def __analyse_raw_class(
     __analyse_class(
         type_info=type_info,
         type_inference_strategy=type_inference_strategy,
+        globalns=vars(results.module),
         module=module,
         module_tree=results.syntax_tree,
         test_cluster=test_cluster,
@@ -1433,6 +1452,34 @@ def __analyse_raw_class(
     )
 
     return type_info
+
+
+def __analyse_type_checking(module: ModuleType, syntax_tree: astroid.Module) -> None:
+    for statement in syntax_tree.body:
+        if not (
+            isinstance(statement, astroid.If)
+            and isinstance(condition := statement.test, astroid.Name)
+            and condition.name == "TYPE_CHECKING"
+        ):
+            continue
+
+        for type_checking_statement in statement.body:
+            if not isinstance(
+                type_checking_statement, astroid.Import | astroid.ImportFrom
+            ):
+                continue
+
+            type_checking_ast = ast.parse(to_code(type_checking_statement))
+            type_checking_code = compile(type_checking_ast, "<ast>", "exec")
+
+            try:
+                exec(type_checking_code, module.__dict__)  # noqa: S102
+            except BaseException:  # noqa: BLE001
+                LOGGER.debug(
+                    "Could not execute TYPE_CHECKING import: %s",
+                    ast.unparse(type_checking_ast),
+                    exc_info=True,
+                )
 
 
 def __analyse_included_classes(
@@ -1496,12 +1543,15 @@ def __analyse_raw_function(
         return
     seen_functions.add(raw_function)
 
+    results = parse_results[raw_function.__module__]
+
     __analyse_function(
         func_name=raw_function.__qualname__,
         func=raw_function,
         type_inference_strategy=type_inference_strategy,
+        globalns=vars(results.module),
         module=module,
-        module_tree=parse_results[raw_function.__module__].syntax_tree,
+        module_tree=results.syntax_tree,
         test_cluster=test_cluster,
         add_to_test=raw_function.__module__ == root_module_name,
     )

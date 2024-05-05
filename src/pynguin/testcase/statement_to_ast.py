@@ -321,7 +321,7 @@ def transform_enum_statement(
         value=ast.Attribute(
             value=ast.Attribute(
                 value=create_module_alias(
-                    accessible_object.exporter_module, module_aliases
+                    accessible_object.exporter_module_name, module_aliases
                 ),
                 attr=owner.name,
                 ctx=ast.Load(),
@@ -398,7 +398,7 @@ def transform_constructor_statement(
             attr=owner.name,
             ctx=ast.Load(),
             value=create_module_alias(
-                accessible_object.exporter_module, module_aliases
+                accessible_object.exporter_module_name, module_aliases
             ),
         ),
         args=args,

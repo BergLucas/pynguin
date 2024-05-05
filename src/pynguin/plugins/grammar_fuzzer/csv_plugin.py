@@ -35,6 +35,7 @@ from pynguin.utils import randomness
 if TYPE_CHECKING:
     from argparse import ArgumentParser
     from argparse import Namespace
+    from types import ModuleType
 
     import pynguin.utils.namingscope as ns
 
@@ -156,8 +157,8 @@ def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
     test_cluster.set_concrete_weight(typ, csv_concrete_weight)
 
 
-def types_hook() -> list[type | tuple[type, str]]:  # noqa: D103
-    return [(io.StringIO, "io")]
+def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
+    return [(io.StringIO, io)]
 
 
 def ast_transformer_hook(  # noqa: D103
@@ -207,7 +208,7 @@ def transform_grammar_based_file_like_object_statement(
             attr=owner.name,
             ctx=ast.Load(),
             value=create_module_alias(
-                accessible_object.exporter_module, module_aliases
+                accessible_object.exporter_module_name, module_aliases
             ),
         ),
         args=[ast.Constant(value=stmt.csv_string)],
@@ -324,7 +325,7 @@ class GrammarBasedFileLikeObjectStatement(VariableCreatingStatement):
         self._string_io_accessible = gao.GenericConstructor(
             string_io_type_info,
             test_case.test_cluster.type_system.infer_type_info(io.StringIO),
-            exporter_module="io",
+            exporter_module=io,
         )
 
         super().__init__(

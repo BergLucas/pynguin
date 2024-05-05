@@ -110,7 +110,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--pandas_dataframe_min_non_terminal",
         type=int,
-        default=0,
+        default=10,
         help="Minimum number of non-terminal symbols in the grammar",
     )
     parser.add_argument(

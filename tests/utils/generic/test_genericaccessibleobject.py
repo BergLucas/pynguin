@@ -21,6 +21,9 @@ class TestAccessibleObject(GenericAccessibleObject):
     def generated_type(self) -> type | None:
         pass  # pragma: no cover
 
+    def exporter_module_name(self) -> str:
+        return "test"
+
     def get_dependencies(
         self, memo: dict[InferredSignature, dict[str, ProperType]]
     ) -> OrderedSet[ProperType]:
@@ -28,7 +31,7 @@ class TestAccessibleObject(GenericAccessibleObject):
 
 
 def test_no_types_true():
-    acc = TestAccessibleObject(None)
+    acc = TestAccessibleObject()
     assert not acc.is_constructor()
     assert not acc.is_method()
     assert not acc.is_function()
@@ -36,7 +39,7 @@ def test_no_types_true():
 
 
 def test_no_params():
-    acc = TestAccessibleObject(None)
+    acc = TestAccessibleObject()
     assert acc.get_num_parameters() == 0
 
 

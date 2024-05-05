@@ -18,6 +18,7 @@ from types import BuiltinFunctionType
 from types import ClassMethodDescriptorType
 from types import FunctionType
 from types import MethodDescriptorType
+from types import ModuleType
 from types import WrapperDescriptorType
 
 from pynguin.analyses.typesystem import InferredSignature
@@ -41,13 +42,18 @@ if typing.TYPE_CHECKING:
 class GenericAccessibleObject(abc.ABC):
     """Abstract base class for something that can be accessed."""
 
-    def __init__(self, owner: TypeInfo | None, exporter_module: str | None = None):
+    def __init__(
+        self, owner: TypeInfo | None, exporter_module: ModuleType | None = None
+    ):
         """Constructor.
 
         Args:
             owner: The owning type
             exporter_module: The optional module where the accessible object is exported
         """
+        if owner is not None and exporter_module is not None:
+            assert owner.raw_type is vars(exporter_module)
+
         self._owner = owner
         self._exporter_module = exporter_module
 
@@ -69,16 +75,19 @@ class GenericAccessibleObject(abc.ABC):
         return self._owner
 
     @property
-    def exporter_module(self) -> str | None:
+    def exporter_module_name(self) -> str | None:
         """The module where the accessible object is exported.
 
         Returns:
             The module where the accessible object is exported
         """
-        if self._exporter_module is None and self._owner is not None:
+        if self._exporter_module is not None:
+            return self._exporter_module.__name__
+
+        if self._owner is not None:
             return self._owner.module
 
-        return self._exporter_module
+        return None
 
     def is_enum(self) -> bool:
         """Is this an enum?
@@ -150,7 +159,7 @@ class GenericAccessibleObject(abc.ABC):
 class GenericEnum(GenericAccessibleObject):
     """Models an enum."""
 
-    def __init__(self, owner: TypeInfo, exporter_module: str | None = None):
+    def __init__(self, owner: TypeInfo, exporter_module: ModuleType | None = None):
         """Constructs an enum-representing object.
 
         Args:
@@ -209,7 +218,7 @@ class GenericCallableAccessibleObject(GenericAccessibleObject, abc.ABC):
         callable_: TypesOfCallables,
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ) -> None:
         """Initializes the object.
 
@@ -272,7 +281,7 @@ class GenericConstructor(GenericCallableAccessibleObject):
         owner: TypeInfo,
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ) -> None:
         """Initializes a constructor-representing object.
 
@@ -325,7 +334,7 @@ class GenericMethod(GenericCallableAccessibleObject):
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
         method_name: str | None = None,
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ) -> None:
         """Initializes a new method-representing object.
 
@@ -397,7 +406,7 @@ class GenericFunction(GenericCallableAccessibleObject):
         inferred_signature: InferredSignature,
         raised_exceptions: set[str] = frozenset(),  # type: ignore[assignment]
         function_name: str | None = None,
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ) -> None:
         """Initializes the function-representing object.
 
@@ -454,7 +463,7 @@ class GenericAbstractField(GenericAccessibleObject, abc.ABC):
         owner: TypeInfo | None,
         field: str,
         field_type: ProperType,
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ) -> None:
         """Constructs the new abstract field object.
 
@@ -492,7 +501,7 @@ class GenericField(GenericAbstractField):
         owner: TypeInfo,
         field: str,
         field_type: ProperType,
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ):
         """Initializes a new field wrapper.
 
@@ -541,7 +550,7 @@ class GenericStaticField(GenericAbstractField):
         owner: TypeInfo,
         field: str,
         field_type: ProperType,
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ):
         """Initializes a new object for a static field.
 
@@ -594,7 +603,7 @@ class GenericStaticModuleField(GenericAbstractField):
         module: str,
         field: str,
         field_type: ProperType,
-        exporter_module: str | None = None,
+        exporter_module: ModuleType | None = None,
     ) -> None:
         """Constructs the object.
 
@@ -604,11 +613,17 @@ class GenericStaticModuleField(GenericAbstractField):
             field_type: The type of the field
             exporter_module: The optional module where the accessible object is exported
         """
-        if exporter_module is None:
-            exporter_module = module
-
         super().__init__(None, field, field_type, exporter_module)
         self._module = module
+
+    @property
+    def exporter_module_name(self) -> str:  # noqa: D102
+        exporter_module_name = super().exporter_module_name
+
+        if exporter_module_name is not None:
+            return exporter_module_name
+
+        return self._module
 
     def is_static(self) -> bool:  # noqa: D102
         return True

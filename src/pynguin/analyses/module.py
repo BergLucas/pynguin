@@ -1103,7 +1103,7 @@ def __analyse_function(
     func_name: str,
     func: FunctionType,
     type_inference_strategy: TypeInferenceStrategy,
-    module: str | None,
+    module: ModuleType | None,
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1145,7 +1145,7 @@ def __analyse_class(
     *,
     type_info: TypeInfo,
     type_inference_strategy: TypeInferenceStrategy,
-    module: str | None,
+    module: ModuleType | None,
     module_tree: astroid.Module | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1255,7 +1255,7 @@ def __analyse_method(
         | MethodDescriptorType
     ),
     type_inference_strategy: TypeInferenceStrategy,
-    module: str | None,
+    module: ModuleType | None,
     class_tree: astroid.ClassDef | None,
     test_cluster: ModuleTestCluster,
     add_to_test: bool,
@@ -1397,7 +1397,7 @@ def __analyse_raw_class(
     test_cluster: ModuleTestCluster,
     parse_results: dict[str, _ModuleParseResult],
     seen_classes: set[type],
-    module: str | None = None,
+    module: ModuleType | None = None,
 ) -> TypeInfo | None:
     if raw_class in seen_classes:
         return None
@@ -1490,7 +1490,7 @@ def __analyse_raw_function(
     test_cluster: ModuleTestCluster,
     parse_results: dict[str, _ModuleParseResult],
     seen_functions: set[FunctionType],
-    module: str | None = None,
+    module: ModuleType | None = None,
 ) -> None:
     if raw_function in seen_functions:
         return
@@ -1569,10 +1569,19 @@ def __analyse_plugins_types(
                 try:
                     plugin_type, module = plugin_type  # noqa: PLW2901
                 except TypeError:
-                    LOGGER.warning(
-                        'Plugin "%s" returned a tuple with more than two elements"'
-                        "from its types_hook",
+                    LOGGER.error(
+                        'Plugin "%s" returned a tuple with more than two elements'
+                        " from its types_hook",
                         plugin.NAME,
+                    )
+                    continue
+
+                if not inspect.ismodule(module):
+                    LOGGER.error(
+                        'Plugin "%s" returned an invalid module "%s"'
+                        " from its types_hook",
+                        plugin.NAME,
+                        module,
                     )
                     continue
             else:
@@ -1600,7 +1609,8 @@ def __analyse_plugins_types(
                 )
             else:
                 LOGGER.warning(
-                    'Plugin "%s" returned an unexpected type "%s" from its types_hook',
+                    'Plugin "%s" returned an unexpected plugin type "%s"'
+                    " from its types_hook",
                     plugin.NAME,
                     plugin_type,
                 )

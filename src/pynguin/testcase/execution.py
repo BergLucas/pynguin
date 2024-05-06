@@ -1547,6 +1547,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
         module_provider: ModuleProvider,
         maximum_test_execution_timeout: int,
         test_execution_time_per_statement: int,
+        remote_observers: tuple[RemoteExecutionObserver, ...],
         test_case: tc.TestCase,
         reference_bindings: dict[int, vr.VariableReference],
         sending_connection: mp_conn.Connection,
@@ -1560,6 +1561,9 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
             maximum_test_execution_timeout,
             test_execution_time_per_statement,
         )
+
+        for remote_observer in remote_observers:
+            executor.add_remote_observer(remote_observer)
 
         result = executor.execute(test_case)
 

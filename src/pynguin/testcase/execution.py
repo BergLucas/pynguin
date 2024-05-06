@@ -1587,7 +1587,7 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
                 module_provider,
                 remote_observers,
                 result,
-                reference_bindings,
+                reference_bindings if result.assertion_trace.trace else {},
                 randomness.RNG.getstate(),
             )
         )
@@ -1628,7 +1628,12 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
                 module_provider,
                 remote_observers,
                 results,
-                references_bindings,
+                [
+                    reference_bindings if result.assertion_trace.trace else {}
+                    for result, reference_bindings in zip(
+                        results, references_bindings, strict=True
+                    )
+                ],
                 randomness.RNG.getstate(),
             )
         )

@@ -14,8 +14,8 @@ from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import pynguin.utils.ast_util as au
-import pynguin.utils.generic.genericaccessibleobject as gao
 
+from pynguin.analyses.typesystem import Instance
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     import pynguin.utils.namingscope as ns
 
     from pynguin.analyses.module import TestCluster
-    from pynguin.analyses.typesystem import Instance
     from pynguin.analyses.typesystem import ProperType
     from pynguin.analyses.typesystem import TupleType
     from pynguin.testcase.statement import Statement
@@ -200,16 +199,14 @@ def transform_grammar_based_file_like_object_statement(
     Returns:
         The AST node.
     """
-    accessible_object = stmt.accessible_object()
-    owner = accessible_object.owner
-    assert owner
+    module_name = io.__name__
+    attr = io.StringIO.__name__
+
     call = ast.Call(
         func=ast.Attribute(
-            attr=owner.name,
+            attr=attr,
             ctx=ast.Load(),
-            value=create_module_alias(
-                accessible_object.exporter_module_name, module_aliases
-            ),
+            value=create_module_alias(module_name, module_aliases),
         ),
         args=[ast.Constant(value=stmt.csv_string)],
         keywords=[],
@@ -320,17 +317,11 @@ class GrammarBasedFileLikeObjectStatement(VariableCreatingStatement):
             io.StringIO
         )
 
-        assert string_io_type_info is not None
-
-        self._string_io_accessible = gao.GenericConstructor(
-            string_io_type_info,
-            test_case.test_cluster.type_system.infer_type_info(io.StringIO),
-            exporter_module=io,
-        )
+        string_io_instance = Instance(string_io_type_info)
 
         super().__init__(
             test_case,
-            vr.CallBasedVariableReference(test_case, self._string_io_accessible),
+            vr.VariableReference(test_case, string_io_instance),
         )
 
     @property
@@ -351,8 +342,8 @@ class GrammarBasedFileLikeObjectStatement(VariableCreatingStatement):
             test_case, self._fuzzer, deepcopy(self._derivation_tree)
         )
 
-    def accessible_object(self) -> gao.GenericAccessibleObject:  # noqa: D102
-        return self._string_io_accessible
+    def accessible_object(self) -> None:  # noqa: D102
+        return None
 
     def mutate(self) -> bool:  # noqa: D102
         mutated = self._fuzzer.mutate_tree(self._derivation_tree)

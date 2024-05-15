@@ -7,23 +7,27 @@
 """Provides a plugin to generate Pandas dataframes as test data."""
 from __future__ import annotations
 
+import ast
+import io
+
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
-import pynguin.testcase.statement as stmt
-import pynguin.utils.generic.genericaccessibleobject as gao
+import pynguin.utils.ast_util as au
 
+from pynguin.analyses.typesystem import Instance
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
-from pynguin.plugins.grammar_fuzzer.csv_plugin import (
-    GrammarBasedFileLikeObjectStatement,
-)
-from pynguin.plugins.grammar_fuzzer.csv_plugin import (
-    transform_grammar_based_file_like_object_statement,
-)
+from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarDerivationTree
 from pynguin.plugins.grammar_fuzzer.fuzzer import GrammarFuzzer
+from pynguin.testcase import variablereference as vr
+from pynguin.testcase.statement import VariableCreatingStatement
+from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
+from pynguin.testcase.statement_to_ast import create_module_alias
+from pynguin.testcase.statement_to_ast import create_statement
 from pynguin.testcase.testfactory import SupportedTypes
 from pynguin.testcase.testfactory import TestFactory
 from pynguin.testcase.testfactory import VariableGenerator
@@ -33,11 +37,14 @@ from pynguin.utils import randomness
 if TYPE_CHECKING:
     from argparse import ArgumentParser
     from argparse import Namespace
+    from types import ModuleType
+
+    import pynguin.utils.namingscope as ns
 
     from pynguin.analyses.module import TestCluster
-    from pynguin.analyses.typesystem import Instance
     from pynguin.analyses.typesystem import ProperType
     from pynguin.analyses.typesystem import TupleType
+    from pynguin.testcase.statement import Statement
     from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
     from pynguin.testcase.testcase import TestCase
     from pynguin.testcase.variablereference import VariableReference
@@ -153,30 +160,89 @@ def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
     test_cluster.set_concrete_weight(typ, pandas_dataframe_concrete_weight)
 
 
-def types_hook() -> list[type]:  # noqa: D103
-    return [pd.DataFrame]
+def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
+    return [(pd.DataFrame, pd)]
 
 
 def ast_transformer_hook(  # noqa: D103
     transformer_functions: dict[type, StatementToAstTransformerFunction]
 ) -> None:
-    transformer_functions[GrammarBasedFileLikeObjectStatement] = (
-        transform_grammar_based_file_like_object_statement
+    transformer_functions[PandasDataframeStatement] = (
+        transform_pandas_dataframe_statement
     )
 
 
 def statement_remover_hook(  # noqa: D103
     remover_functions: dict[type, UnusedPrimitiveOrCollectionStatementRemoverFunction]
 ) -> None:
-    remover_functions[GrammarBasedFileLikeObjectStatement] = (
-        remove_collection_or_primitive
-    )
+    remover_functions[PandasDataframeStatement] = remove_collection_or_primitive
 
 
 def variable_generator_hook(  # noqa: D103
     generators: dict[VariableGenerator, float]
 ) -> None:
     generators[PandasVariableGenerator()] = pandas_dataframe_weight
+
+
+def transform_pandas_dataframe_statement(
+    stmt: PandasDataframeStatement,
+    module_aliases: ns.AbstractNamingScope,
+    variable_names: ns.AbstractNamingScope,
+    store_call_return: bool,  # noqa: FBT001
+) -> ast.stmt:
+    """Transform a Pandas dataframe statement to an AST node.
+
+    Args:
+        stmt: The statement to transform.
+        module_aliases: A naming scope for module alias names.
+        variable_names: A naming scope for variable names.
+        store_call_return: Should the result of a call be stored in a variable?
+
+    Returns:
+        The AST node.
+    """
+    io_module_name = io.__name__
+    string_io_attr = io.StringIO.__name__
+
+    string_io_call = ast.Call(
+        func=ast.Attribute(
+            attr=string_io_attr,
+            ctx=ast.Load(),
+            value=create_module_alias(io_module_name, module_aliases),
+        ),
+        args=[ast.Constant(value=stmt.csv_string)],
+        keywords=[],
+    )
+
+    module_name = pd.__name__
+    attr = pd.DataFrame.__name__
+
+    call = ast.Call(
+        func=ast.Attribute(
+            attr=attr,
+            ctx=ast.Load(),
+            value=create_module_alias(module_name, module_aliases),
+        ),
+        args=[string_io_call],
+        keywords=[],
+    )
+
+    if store_call_return:
+        targets = [
+            au.create_full_name(
+                variable_names,
+                module_aliases,
+                stmt.ret_val,
+                load=False,
+            )
+        ]
+    else:
+        targets = None
+
+    return create_statement(
+        value=call,
+        targets=targets,
+    )
 
 
 class _PandasDataframeSupportedTypes(SupportedTypes):
@@ -230,24 +296,104 @@ class PandasVariableGenerator(VariableGenerator):
             pandas_dataframe_max_non_terminal,
         )
 
-        string_io_ret = test_case.add_variable_creating_statement(
-            GrammarBasedFileLikeObjectStatement(test_case, csv_grammar_fuzzer),
+        pandas_dataframe_ret = test_case.add_variable_creating_statement(
+            PandasDataframeStatement(test_case, csv_grammar_fuzzer),
             position,
         )
-        string_io_ret.distance = recursion_depth
+        pandas_dataframe_ret.distance = recursion_depth
 
-        dataframe_accessible = gao.GenericFunction(
-            pd.read_csv,
-            test_case.test_cluster.type_system.infer_type_info(pd.read_csv),
+        return pandas_dataframe_ret
+
+
+class PandasDataframeStatement(VariableCreatingStatement):
+    """A statement that creates a Pandas dataframe."""
+
+    def __init__(
+        self,
+        test_case: TestCase,
+        fuzzer: GrammarFuzzer,
+        derivation_tree: GrammarDerivationTree | None = None,
+    ) -> None:
+        """Create a new Pandas dataframe statement.
+
+        Args:
+            test_case: The test case
+            fuzzer: The fuzzer to use
+            derivation_tree: The derivation tree to use
+        """
+        if derivation_tree is None:
+            derivation_tree = fuzzer.create_tree()
+
+        self._derivation_tree = derivation_tree
+        self._fuzzer = fuzzer
+        self._csv_string = str(derivation_tree)
+
+        pandas_dataframe_type_info = test_case.test_cluster.type_system.to_type_info(
+            pd.DataFrame
         )
 
-        dataframe_statement = stmt.FunctionStatement(
-            test_case, dataframe_accessible, {"filepath_or_buffer": string_io_ret}
+        pandas_dataframe_instance = Instance(pandas_dataframe_type_info)
+
+        super().__init__(
+            test_case,
+            vr.VariableReference(test_case, pandas_dataframe_instance),
         )
 
-        dataframe_ret = test_case.add_variable_creating_statement(
-            dataframe_statement, position + 1
-        )
-        dataframe_ret.distance = recursion_depth
+    @property
+    def csv_string(self) -> str:
+        """The CSV string representation.
 
-        return dataframe_ret
+        Returns:
+            The CSV string representation.
+        """
+        return self._csv_string
+
+    def clone(  # noqa: D102
+        self,
+        test_case: TestCase,
+        memo: dict[VariableReference, VariableReference],
+    ) -> PandasDataframeStatement:
+        return PandasDataframeStatement(
+            test_case, self._fuzzer, deepcopy(self._derivation_tree)
+        )
+
+    def accessible_object(self) -> None:  # noqa: D102
+        return None
+
+    def mutate(self) -> bool:  # noqa: D102
+        mutated = self._fuzzer.mutate_tree(self._derivation_tree)
+
+        if mutated:
+            self._csv_string = str(self._derivation_tree)
+
+        return mutated
+
+    def get_variable_references(self) -> set[vr.VariableReference]:  # noqa: D102
+        return {self.ret_val}
+
+    def replace(  # noqa: D102
+        self, old: vr.VariableReference, new: vr.VariableReference
+    ) -> None:
+        if self.ret_val == old:
+            self.ret_val = new
+
+    def structural_eq(  # noqa: D102
+        self, other: Statement, memo: dict[vr.VariableReference, vr.VariableReference]
+    ) -> bool:
+        return (
+            isinstance(other, PandasDataframeStatement)
+            and self.ret_val.structural_eq(other.ret_val, memo)
+            and self._csv_string == other._csv_string  # noqa: SLF001
+            and self._fuzzer.grammar == other._fuzzer.grammar  # noqa: SLF001
+        )
+
+    def structural_hash(  # noqa: D102
+        self, memo: dict[vr.VariableReference, int]
+    ) -> int:
+        return hash(
+            (
+                self.ret_val.structural_hash(memo),
+                self._csv_string,
+                self._fuzzer.grammar,
+            )
+        )

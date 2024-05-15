@@ -215,7 +215,7 @@ def transform_polars_dataframe_statement(
     )
 
     module_name = pl.__name__
-    attr = pl.DataFrame.__name__
+    attr = pl.read_csv.__name__
 
     call = ast.Call(
         func=ast.Attribute(

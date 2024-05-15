@@ -215,7 +215,7 @@ def transform_pandas_dataframe_statement(
     )
 
     module_name = pd.__name__
-    attr = pd.DataFrame.__name__
+    attr = pd.read_csv.__name__
 
     call = ast.Call(
         func=ast.Attribute(

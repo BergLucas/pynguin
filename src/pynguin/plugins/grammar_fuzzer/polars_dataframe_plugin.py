@@ -13,8 +13,6 @@ import io
 from copy import deepcopy
 from typing import TYPE_CHECKING
 
-import polars as pl
-
 import pynguin.utils.ast_util as au
 
 from pynguin.analyses.typesystem import Instance
@@ -61,6 +59,8 @@ polars_dataframe_min_rows_number: int = 0
 polars_dataframe_max_rows_number: int = 0
 polars_dataframe_min_non_terminal: int = 0
 polars_dataframe_max_non_terminal: int = 0
+
+pl: ModuleType
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -163,6 +163,9 @@ def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
 
 
 def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
+    global pl  # noqa: PLW0603
+    import polars as pl  # noqa: PLC0415
+
     return [(pl.DataFrame, pl)]
 
 

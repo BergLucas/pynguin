@@ -156,17 +156,17 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     pandas_dataframe_max_non_terminal = plugin_config.pandas_dataframe_max_non_terminal
 
 
-def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
-    type_info = test_cluster.type_system.to_type_info(pd.DataFrame)
-    typ = test_cluster.type_system.make_instance(type_info)
-    test_cluster.set_concrete_weight(typ, pandas_dataframe_concrete_weight)
-
-
 def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
     global pd  # noqa: PLW0603
     import pandas as pd  # noqa: PLC0415
 
     return [(pd.DataFrame, pd)]
+
+
+def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
+    type_info = test_cluster.type_system.to_type_info(pd.DataFrame)
+    typ = test_cluster.type_system.make_instance(type_info)
+    test_cluster.set_concrete_weight(typ, pandas_dataframe_concrete_weight)
 
 
 def ast_transformer_hook(  # noqa: D103

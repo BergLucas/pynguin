@@ -149,7 +149,7 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
         plugin_config.pandas_dataframe_max_columns_number
     )
     pandas_dataframe_min_field_length = plugin_config.pandas_dataframe_min_field_length
-    pandas_dataframe_max_field_length = plugin_config.pandas_dataframe_min_field_length
+    pandas_dataframe_max_field_length = plugin_config.pandas_dataframe_max_field_length
     pandas_dataframe_min_rows_number = plugin_config.pandas_dataframe_min_rows_number
     pandas_dataframe_max_rows_number = plugin_config.pandas_dataframe_max_rows_number
     pandas_dataframe_min_non_terminal = plugin_config.pandas_dataframe_min_non_terminal

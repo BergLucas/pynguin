@@ -130,6 +130,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global pandas_dataframe_weight  # noqa: PLW0603
+    global pandas_dataframe_concrete_weight  # noqa: PLW0603
     global pandas_dataframe_min_columns_number  # noqa: PLW0603
     global pandas_dataframe_max_columns_number  # noqa: PLW0603
     global pandas_dataframe_min_field_length  # noqa: PLW0603
@@ -140,6 +141,7 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global pandas_dataframe_max_non_terminal  # noqa: PLW0603
 
     pandas_dataframe_weight = plugin_config.pandas_dataframe_weight
+    pandas_dataframe_concrete_weight = plugin_config.pandas_dataframe_concrete_weight
     pandas_dataframe_min_columns_number = (
         plugin_config.pandas_dataframe_min_columns_number
     )

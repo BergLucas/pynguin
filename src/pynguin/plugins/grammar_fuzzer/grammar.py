@@ -221,5 +221,17 @@ class Repeat(GrammarRule):
     min: int = 0
     max: int | None = None
 
+    @classmethod
+    def optional(cls, rule: GrammarRule) -> Repeat:
+        """Create an optional rule.
+
+        Args:
+            rule: The rule that should be optional.
+
+        Returns:
+            The optional rule.
+        """
+        return cls(rule, min=0, max=1)
+
     def accept(self, visitor: GrammarRuleVisitor[T_co]) -> T_co:  # noqa: D102
         return visitor.visit_repeat(self)

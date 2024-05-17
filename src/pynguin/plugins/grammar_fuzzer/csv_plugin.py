@@ -150,14 +150,14 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     csv_max_non_terminal = plugin_config.csv_max_non_terminal
 
 
+def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
+    return [(io.StringIO, io)]
+
+
 def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
     type_info = test_cluster.type_system.to_type_info(io.StringIO)
     typ = test_cluster.type_system.make_instance(type_info)
     test_cluster.set_concrete_weight(typ, csv_concrete_weight)
-
-
-def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
-    return [(io.StringIO, io)]
 
 
 def ast_transformer_hook(  # noqa: D103

@@ -134,7 +134,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--csv_max_non_terminal",
         type=int,
-        default=25,
+        default=50,
         help="Maximum number of non-terminal symbols in the grammar",
     )
 

@@ -57,6 +57,8 @@ pandas_dataframe_min_field_length: int = 0
 pandas_dataframe_max_field_length: int = 0
 pandas_dataframe_min_rows_number: int = 0
 pandas_dataframe_max_rows_number: int = 0
+pandas_dataframe_number_column_probability: float = 0.0
+pandas_dataframe_no_header: bool = False
 pandas_dataframe_min_non_terminal: int = 0
 pandas_dataframe_max_non_terminal: int = 0
 
@@ -115,6 +117,17 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         help="Maximum number of rows in the generated Pandas dataframe",
     )
     parser.add_argument(
+        "--pandas_dataframe_number_column_probability",
+        type=float,
+        default=0.75,
+        help="Probability that a column has the number type",
+    )
+    parser.add_argument(
+        "--pandas_dataframe_no_header",
+        action="store_true",
+        help="Remove header from the Pandas dataframe",
+    )
+    parser.add_argument(
         "--pandas_dataframe_min_non_terminal",
         type=int,
         default=10,
@@ -123,7 +136,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--pandas_dataframe_max_non_terminal",
         type=int,
-        default=25,
+        default=50,
         help="Maximum number of non-terminal symbols in the grammar",
     )
 
@@ -137,6 +150,8 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global pandas_dataframe_max_field_length  # noqa: PLW0603
     global pandas_dataframe_min_rows_number  # noqa: PLW0603
     global pandas_dataframe_max_rows_number  # noqa: PLW0603
+    global pandas_dataframe_number_column_probability  # noqa: PLW0603
+    global pandas_dataframe_no_header  # noqa: PLW0603
     global pandas_dataframe_min_non_terminal  # noqa: PLW0603
     global pandas_dataframe_max_non_terminal  # noqa: PLW0603
 
@@ -152,6 +167,10 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     pandas_dataframe_max_field_length = plugin_config.pandas_dataframe_max_field_length
     pandas_dataframe_min_rows_number = plugin_config.pandas_dataframe_min_rows_number
     pandas_dataframe_max_rows_number = plugin_config.pandas_dataframe_max_rows_number
+    pandas_dataframe_number_column_probability = (
+        plugin_config.pandas_dataframe_number_column_probability
+    )
+    pandas_dataframe_no_header = plugin_config.pandas_dataframe_no_header
     pandas_dataframe_min_non_terminal = plugin_config.pandas_dataframe_min_non_terminal
     pandas_dataframe_max_non_terminal = plugin_config.pandas_dataframe_max_non_terminal
 
@@ -293,6 +312,8 @@ class PandasVariableGenerator(VariableGenerator):
             max_field_length=pandas_dataframe_max_field_length,
             min_rows_number=pandas_dataframe_min_rows_number,
             max_rows_number=pandas_dataframe_max_rows_number,
+            number_column_probability=pandas_dataframe_number_column_probability,
+            include_header=not pandas_dataframe_no_header,
         )
 
         csv_grammar_fuzzer = GrammarFuzzer(

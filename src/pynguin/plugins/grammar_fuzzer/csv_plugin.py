@@ -57,6 +57,8 @@ csv_min_field_length: int = 0
 csv_max_field_length: int = 0
 csv_min_rows_number: int = 0
 csv_max_rows_number: int = 0
+csv_number_column_probability: float = 0.0
+csv_no_header: bool = False
 csv_min_non_terminal: int = 0
 csv_max_non_terminal: int = 0
 
@@ -113,6 +115,17 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         help="Maximum number of rows in the CSV file-like object",
     )
     parser.add_argument(
+        "--csv_number_column_probability",
+        type=float,
+        default=0.75,
+        help="Probability that a column has the number type",
+    )
+    parser.add_argument(
+        "--csv_no_header",
+        action="store_true",
+        help="Remove header from the CSV file-like object",
+    )
+    parser.add_argument(
         "--csv_min_non_terminal",
         type=int,
         default=10,
@@ -121,7 +134,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--csv_max_non_terminal",
         type=int,
-        default=25,
+        default=50,
         help="Maximum number of non-terminal symbols in the grammar",
     )
 
@@ -135,6 +148,8 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global csv_max_field_length  # noqa: PLW0603
     global csv_min_rows_number  # noqa: PLW0603
     global csv_max_rows_number  # noqa: PLW0603
+    global csv_number_column_probability  # noqa: PLW0603
+    global csv_no_header  # noqa: PLW0603
     global csv_min_non_terminal  # noqa: PLW0603
     global csv_max_non_terminal  # noqa: PLW0603
 
@@ -146,6 +161,8 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     csv_max_field_length = plugin_config.csv_max_field_length
     csv_min_rows_number = plugin_config.csv_min_rows_number
     csv_max_rows_number = plugin_config.csv_max_rows_number
+    csv_number_column_probability = plugin_config.csv_number_column_probability
+    csv_no_header = plugin_config.csv_no_header
     csv_min_non_terminal = plugin_config.csv_min_non_terminal
     csv_max_non_terminal = plugin_config.csv_max_non_terminal
 
@@ -273,6 +290,8 @@ class CsvVariableGenerator(VariableGenerator):
             max_field_length=csv_max_field_length,
             min_rows_number=csv_min_rows_number,
             max_rows_number=csv_max_rows_number,
+            number_column_probability=csv_number_column_probability,
+            include_header=not csv_no_header,
         )
 
         csv_grammar_fuzzer = GrammarFuzzer(

@@ -247,14 +247,23 @@ def transform_grammar_based_file_like_object_statement(
     )
 
 
+READABLE_FILE_LIKE_OBJECT_ATTRIBUTES = {
+    "seek",
+    "seekable",
+    "tell",
+    "read",
+    "__iter__",
+    "fileno",
+    "readline",
+    "closed",
+}
+
+
 class _CsvSupportedTypes(SupportedTypes):
     """Supported types for CSV files."""
 
     def visit_instance(self, left: Instance) -> bool:
-        try:
-            return issubclass(left.type.raw_type, io.TextIOBase)
-        except TypeError:
-            return False
+        return READABLE_FILE_LIKE_OBJECT_ATTRIBUTES.issubset(dir(left.type.raw_type))
 
     def visit_tuple_type(self, left: TupleType) -> bool:
         return False

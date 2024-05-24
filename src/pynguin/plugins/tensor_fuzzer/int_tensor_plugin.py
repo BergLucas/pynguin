@@ -1,3 +1,9 @@
+#  This file is part of Pynguin.
+#
+#  SPDX-FileCopyrightText: 2019–2024 Pynguin Contributors
+#
+#  SPDX-License-Identifier: MIT
+#
 """A plugin for generating int tensors."""
 
 from __future__ import annotations
@@ -8,7 +14,6 @@ import math
 from typing import TYPE_CHECKING
 
 import pynguin.utils.ast_util as au
-import pynguin.utils.generic.genericaccessibleobject as gao
 
 from pynguin import configuration as config
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
@@ -17,9 +22,9 @@ from pynguin.testcase.statement import Statement
 from pynguin.testcase.statement import VariableCreatingStatement
 from pynguin.testcase.statement_to_ast import StatementToAstTransformerFunction
 from pynguin.testcase.statement_to_ast import create_statement
-from pynguin.testcase.testfactory import AbstractVariableGenerator
 from pynguin.testcase.testfactory import SupportedTypes
 from pynguin.testcase.testfactory import TestFactory
+from pynguin.testcase.testfactory import VariableGenerator
 from pynguin.testcase.variablereference import VariableReference
 from pynguin.utils import randomness
 
@@ -68,7 +73,7 @@ def statement_remover_hook(  # noqa: D103
 
 
 def variable_generator_hook(  # noqa: D103
-    generators: dict[AbstractVariableGenerator, float]
+    generators: dict[VariableGenerator, float]
 ) -> None:
     generators[IntTensorVariableGenerator()] = int_tensor_weight
 
@@ -141,20 +146,20 @@ def transform_int_tensor_statement(
     )
 
 
-class IntTensorSupportedTypes(SupportedTypes):
+class _IntTensorSupportedTypes(SupportedTypes):
     """Supported types for int tensors."""
 
-    def visit_instance(self, left: Instance) -> bool:  # noqa: D102
+    def visit_instance(self, left: Instance) -> bool:
         return left.type.raw_type is list
 
-    def visit_tuple_type(self, left: TupleType) -> bool:  # noqa: D102
+    def visit_tuple_type(self, left: TupleType) -> bool:
         return False
 
 
-int_tensor_supported_types = IntTensorSupportedTypes()
+int_tensor_supported_types = _IntTensorSupportedTypes()
 
 
-class IntTensorVariableGenerator(AbstractVariableGenerator):
+class IntTensorVariableGenerator(VariableGenerator):
     """An int tensor variable generator."""
 
     @property
@@ -224,7 +229,7 @@ class IntTensorStatement(VariableCreatingStatement):
         """
         return self._shape
 
-    def accessible_object(self) -> gao.GenericAccessibleObject | None:  # noqa: D102
+    def accessible_object(self) -> None:  # noqa: D102
         return None
 
     def mutate(self) -> bool:  # noqa: D102

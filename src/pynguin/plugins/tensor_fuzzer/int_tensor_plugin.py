@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
     import pynguin.utils.namingscope as ns
 
+    from pynguin.analyses.module import TestCluster
     from pynguin.analyses.typesystem import Instance
     from pynguin.analyses.typesystem import ProperType
     from pynguin.analyses.typesystem import TupleType
@@ -43,6 +44,15 @@ if TYPE_CHECKING:
 NAME = "int_tensor_fuzzer"
 
 int_tensor_weight: float = 0
+int_tensor_concrete_weight: float = 0
+int_tensor_min_ndim: int = 0
+int_tensor_max_ndim: int = 0
+int_tensor_min_ndim_length: int = 0
+int_tensor_max_ndim_length: int = 0
+int_tensor_min_number: int = 0
+int_tensor_max_number: int = 0
+
+int_tensor_types: set[type] = set()
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -53,11 +63,100 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
         help="""Weight to use an int tensor as parameter type during test generation.
         Expects values > 0""",
     )
+    parser.add_argument(
+        "--int_tensor_concrete_weight",
+        type=float,
+        default=100.0,
+        help="""Weight to convert an abstract type to a int tensor."""
+        """Expects values > 0""",
+    )
+    parser.add_argument(
+        "--int_tensor_min_ndim",
+        type=int,
+        default=1,
+        help="Minimum number of dimensions for an int tensor.",
+    )
+    parser.add_argument(
+        "--int_tensor_max_ndim",
+        type=int,
+        default=3,
+        help="Maximum number of dimensions for an int tensor.",
+    )
+    parser.add_argument(
+        "--int_tensor_min_ndim_length",
+        type=int,
+        default=1,
+        help="Minimum length of a dimension for an int tensor.",
+    )
+    parser.add_argument(
+        "--int_tensor_max_ndim_length",
+        type=int,
+        default=10,
+        help="Maximum length of a dimension for an int tensor.",
+    )
+    parser.add_argument(
+        "--int_tensor_min_number",
+        type=int,
+        default=-100,
+        help="Minimum value for an int tensor.",
+    )
+    parser.add_argument(
+        "--int_tensor_max_number",
+        type=int,
+        default=100,
+        help="Maximum value for an int tensor.",
+    )
+
+
+def _create_int_tensor_type(ndim: int) -> type:
+    """Create a type for an int tensor with a given number of dimensions.
+
+    Args:
+        ndim: The number of dimensions
+
+    Returns:
+        A type for an int tensor
+    """
+    if ndim == 1:
+        return list[int]
+    return list[_create_int_tensor_type(ndim - 1)]  # type: ignore[misc]
 
 
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global int_tensor_weight  # noqa: PLW0603
+    global int_tensor_concrete_weight  # noqa: PLW0603
+    global int_tensor_min_ndim  # noqa: PLW0603
+    global int_tensor_max_ndim  # noqa: PLW0603
+    global int_tensor_min_ndim_length  # noqa: PLW0603
+    global int_tensor_max_ndim_length  # noqa: PLW0603
+    global int_tensor_min_number  # noqa: PLW0603
+    global int_tensor_max_number  # noqa: PLW0603
+
     int_tensor_weight = plugin_config.int_tensor_weight
+    int_tensor_concrete_weight = plugin_config.int_tensor_concrete_weight
+    int_tensor_min_ndim = plugin_config.int_tensor_min_ndim
+    int_tensor_max_ndim = plugin_config.int_tensor_max_ndim
+    int_tensor_min_ndim_length = plugin_config.int_tensor_min_ndim_length
+    int_tensor_max_ndim_length = plugin_config.int_tensor_max_ndim_length
+    int_tensor_min_number = plugin_config.int_tensor_min_number
+    int_tensor_max_number = plugin_config.int_tensor_max_number
+
+
+def types_hook() -> list[type]:  # noqa: D103
+    int_tensor_types.update(
+        _create_int_tensor_type(ndim)
+        for ndim in range(int_tensor_min_ndim, int_tensor_max_ndim + 1)
+    )
+    return list(int_tensor_types)
+
+
+def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
+    for int_tensor_type in int_tensor_types:
+        type_info = test_cluster.type_system.to_type_info(int_tensor_type)
+        typ = test_cluster.type_system.make_instance(type_info)
+        test_cluster.set_concrete_weight(
+            typ, int_tensor_concrete_weight / len(int_tensor_types)
+        )
 
 
 def ast_transformer_hook(  # noqa: D103
@@ -150,7 +249,7 @@ class _IntTensorSupportedTypes(SupportedTypes):
     """Supported types for int tensors."""
 
     def visit_instance(self, left: Instance) -> bool:
-        return left.type.raw_type is list
+        return left.type.raw_type in int_tensor_types
 
     def visit_tuple_type(self, left: TupleType) -> bool:
         return False
@@ -176,9 +275,17 @@ class IntTensorVariableGenerator(VariableGenerator):
         *,
         allow_none: bool,
     ) -> VariableReference | None:
-        nb_dims = randomness.next_int(1, 4)
-        shape = tuple(randomness.next_int(1, 11) for _ in range(nb_dims))
-        tensor = [randomness.next_int() for _ in range(math.prod(shape))]
+        nb_dims = randomness.next_int(int_tensor_min_ndim, int_tensor_max_ndim + 1)
+        shape = tuple(
+            randomness.next_int(
+                int_tensor_min_ndim_length, int_tensor_max_ndim_length + 1
+            )
+            for _ in range(nb_dims)
+        )
+        tensor = [
+            randomness.next_int(int_tensor_min_number, int_tensor_max_number + 1)
+            for _ in range(math.prod(shape))
+        ]
         statement = IntTensorStatement(test_case, parameter_type, tensor, shape)
         ret = test_case.add_variable_creating_statement(statement, position)
         ret.distance = recursion_depth

@@ -129,9 +129,30 @@ def _setup_test_cluster() -> ModuleTestCluster | None:
         config.configuration.module_name,
         config.configuration.type_inference.type_inference_strategy,
     )
+
     if test_cluster.num_accessible_objects_under_test() == 0:
         _LOGGER.error("SUT contains nothing we can test.")
         return None
+
+    for plugin in config.plugins:
+        try:
+            test_cluster_hook = plugin.test_cluster_hook
+        except AttributeError:
+            _LOGGER.debug(
+                'Plugin "%s" does not have a test_cluster_hook attribute',
+                plugin.NAME,
+            )
+            continue
+
+        try:
+            test_cluster_hook(test_cluster)
+        except BaseException:
+            _LOGGER.exception(
+                'Failed to run test_cluster_hook for plugin "%s"',
+                plugin.NAME,
+            )
+            continue
+
     return test_cluster
 
 
@@ -251,7 +272,7 @@ def _create_transformer_functions():
         try:
             ast_transformer_hook = plugin.ast_transformer_hook
         except AttributeError:
-            logging.debug(
+            _LOGGER.debug(
                 'Plugin "%s" does not have an ast_transformer_hook attribute',
                 plugin.NAME,
                 exc_info=True,
@@ -261,7 +282,7 @@ def _create_transformer_functions():
         try:
             ast_transformer_hook(transformer_functions)
         except BaseException:
-            logging.exception(
+            _LOGGER.exception(
                 'Failed to run ast_transformer_hook for plugin "%s"',
                 plugin.NAME,
             )
@@ -620,17 +641,16 @@ def _create_remover_functions():
         try:
             statement_remover_hook = plugin.statement_remover_hook
         except AttributeError:
-            logging.debug(
+            _LOGGER.debug(
                 'Plugin "%s" does not have a statement_remover_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 
         try:
             statement_remover_hook(remover_functions)
         except BaseException:
-            logging.exception(
+            _LOGGER.exception(
                 'Failed to run statement_remover_hook for plugin "%s"',
                 plugin.NAME,
             )
@@ -725,24 +745,24 @@ def _track_search_metrics(
 
 def _create_variable_generators() -> dict:
     variable_generators = {
-        tf.BuiltInVariableGenerator(): 5,
+        tf.abstract_variable_generator: 100.0,
+        tf.concrete_variable_generator: 100.0,
     }
 
     for plugin in config.plugins:
         try:
             variable_generator_hook = plugin.variable_generator_hook
         except AttributeError:
-            logging.debug(
+            _LOGGER.debug(
                 'Plugin "%s" does not have a variable_generator_hook attribute',
                 plugin.NAME,
-                exc_info=True,
             )
             continue
 
         try:
             variable_generator_hook(variable_generators)
         except BaseException:
-            logging.exception(
+            _LOGGER.exception(
                 'Failed to run variable_generator_hook for plugin "%s"',
                 plugin.NAME,
             )

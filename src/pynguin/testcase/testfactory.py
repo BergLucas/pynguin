@@ -54,7 +54,7 @@ class VariableManager:
 
     def __init__(
         self,
-        variable_generators: dict[AbstractVariableGenerator, float],
+        variable_generators: dict[VariableGenerator, float],
     ):
         """Initialize the variable manager.
 
@@ -167,23 +167,23 @@ class VariableManager:
         Raises:
             ConstructionFailedException: if construction of an object failed
         """
-        population: list[AbstractVariableGenerator] = []
+        population: list[VariableGenerator] = []
         weights: list[float] = []
         for generator, weight in self._variable_generators.items():
             if parameter_type.accept(generator.supported_types):
                 population.append(generator)
                 weights.append(weight)
 
-        variable_generator: AbstractVariableGenerator = randomness.choices(
-            population, weights, k=1
-        )[0]
+        variable_generator: VariableGenerator = randomness.choices(population, weights)[
+            0
+        ]
 
         return variable_generator.generate_variable(
-            test_factory=test_factory,
-            test_case=test_case,
-            parameter_type=parameter_type,
-            position=position,
-            recursion_depth=recursion_depth,
+            test_factory,
+            test_case,
+            parameter_type,
+            position,
+            recursion_depth,
             allow_none=allow_none,
         )
 
@@ -221,9 +221,7 @@ class VariableManager:
                 return self.create_or_reuse_variable(
                     test_factory=test_factory,
                     test_case=test_case,
-                    parameter_type=randomness.choice(
-                        test_factory.test_cluster.get_all_generatable_types()
-                    ),
+                    parameter_type=test_factory.test_cluster.select_concrete_type(ANY),
                     position=position,
                     recursion_depth=recursion_depth + 1,
                     allow_none=allow_none,
@@ -254,20 +252,20 @@ class SupportedTypes(ABC, TypeVisitor[bool]):
     """A visitor for supported types."""
 
     def visit_any_type(self, left: AnyType) -> bool:  # noqa: D102
-        return True
+        return False
 
     def visit_none_type(self, left: NoneType) -> bool:  # noqa: D102
         return False
 
     def visit_union_type(self, left: UnionType) -> bool:  # noqa: D102
-        return any(item.accept(self) for item in left.items)
+        return False
 
     def visit_unsupported_type(self, left: Unsupported) -> bool:  # noqa: D102
         raise NotImplementedError("This type shall not be used during runtime")
 
 
-class AbstractVariableGenerator(ABC):
-    """An abstract variable generator."""
+class VariableGenerator(ABC):
+    """An variable generator."""
 
     @property
     @abstractmethod
@@ -307,36 +305,33 @@ class AbstractVariableGenerator(ABC):
         """
 
 
-class _BuiltInSupportedTypes(SupportedTypes):
-    """A built-in supported types visitor."""
+class _AbstractSupportedTypes(SupportedTypes):
+    """A supported types visitor that accepts all abstract types."""
 
     def visit_any_type(self, left: AnyType) -> bool:
         return True
 
-    def visit_none_type(self, left: NoneType) -> bool:
-        return True
-
     def visit_instance(self, left: Instance) -> bool:
-        return True
+        return False
 
     def visit_tuple_type(self, left: TupleType) -> bool:
-        return True
+        return False
 
     def visit_union_type(self, left: UnionType) -> bool:
         return True
 
 
-_builtin_supported_types = _BuiltInSupportedTypes()
+abstract_supported_types = _AbstractSupportedTypes()
 
 
-class BuiltInVariableGenerator(AbstractVariableGenerator):
-    """A built-in variable generator."""
+class _AbstractVariableGenerator(VariableGenerator):
+    """A variable generator that can generate variables of all abstract types."""
 
     @property
-    def supported_types(self) -> SupportedTypes:  # noqa: D102
-        return _builtin_supported_types
+    def supported_types(self) -> SupportedTypes:
+        return abstract_supported_types
 
-    def generate_variable(  # noqa: D102
+    def generate_variable(
         self,
         test_factory: TestFactory,
         test_case: tc.TestCase,
@@ -350,6 +345,52 @@ class BuiltInVariableGenerator(AbstractVariableGenerator):
         # choose one.
         parameter_type = test_factory.test_cluster.select_concrete_type(parameter_type)
 
+        return test_factory.variable_manager.attempt_generation(
+            test_factory,
+            test_case,
+            parameter_type,
+            position,
+            recursion_depth + 1,
+            allow_none=allow_none,
+        )
+
+
+abstract_variable_generator = _AbstractVariableGenerator()
+
+
+class _ConcreteSupportedTypes(SupportedTypes):
+    """A supported types visitor accepts variables of all concrete types."""
+
+    def visit_none_type(self, left: NoneType) -> bool:
+        return True
+
+    def visit_instance(self, left: Instance) -> bool:
+        return True
+
+    def visit_tuple_type(self, left: TupleType) -> bool:
+        return True
+
+
+concrete_supported_types = _ConcreteSupportedTypes()
+
+
+class _ConcreteVariableGenerator(VariableGenerator):
+    """A variable generator that can generate all concrete types."""
+
+    @property
+    def supported_types(self) -> SupportedTypes:
+        return concrete_supported_types
+
+    def generate_variable(
+        self,
+        test_factory: TestFactory,
+        test_case: tc.TestCase,
+        parameter_type: ProperType,
+        position: int,
+        recursion_depth: int,
+        *,
+        allow_none: bool,
+    ) -> vr.VariableReference | None:
         if isinstance(parameter_type, NoneType):
             return self._create_none(test_case, position, recursion_depth)
         # TODO(fk) think about creating collections/primitives from calls?
@@ -595,6 +636,9 @@ class BuiltInVariableGenerator(AbstractVariableGenerator):
         )
         ret.distance = recursion_depth
         return ret
+
+
+concrete_variable_generator = _ConcreteVariableGenerator()
 
 
 # TODO(fk) find better name for this?

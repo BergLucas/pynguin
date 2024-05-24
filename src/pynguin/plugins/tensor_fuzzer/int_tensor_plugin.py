@@ -49,7 +49,7 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     parser.add_argument(
         "--int_tensor_weight",
         type=float,
-        default=0,
+        default=100.0,
         help="""Weight to use an int tensor as parameter type during test generation.
         Expects values > 0""",
     )

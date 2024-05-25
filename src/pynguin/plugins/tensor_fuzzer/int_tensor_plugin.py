@@ -152,8 +152,7 @@ def types_hook() -> list[type]:  # noqa: D103
 
 def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
     for int_tensor_type in int_tensor_types:
-        type_info = test_cluster.type_system.to_type_info(int_tensor_type)
-        typ = test_cluster.type_system.make_instance(type_info)
+        typ = test_cluster.type_system.convert_type_hint(int_tensor_type)
         test_cluster.set_concrete_weight(
             typ, int_tensor_concrete_weight / len(int_tensor_types)
         )

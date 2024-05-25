@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 import pynguin.utils.ast_util as au
 
-from pynguin.analyses.typesystem import Instance
 from pynguin.ga.postprocess import UnusedPrimitiveOrCollectionStatementRemoverFunction
 from pynguin.ga.postprocess import remove_collection_or_primitive
 from pynguin.plugins.grammar_fuzzer.csv import create_csv_grammar
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
     import pynguin.utils.namingscope as ns
 
     from pynguin.analyses.module import TestCluster
+    from pynguin.analyses.typesystem import Instance
     from pynguin.analyses.typesystem import ProperType
     from pynguin.analyses.typesystem import TupleType
     from pynguin.testcase.statement import Statement
@@ -183,8 +183,7 @@ def types_hook() -> list[tuple[type, ModuleType]]:  # noqa: D103
 
 
 def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
-    type_info = test_cluster.type_system.to_type_info(pl.DataFrame)
-    typ = test_cluster.type_system.make_instance(type_info)
+    typ = test_cluster.type_system.convert_type_hint(pl.DataFrame)
     test_cluster.set_concrete_weight(typ, polars_dataframe_concrete_weight)
 
 
@@ -303,7 +302,7 @@ class PolarsVariableGenerator(VariableGenerator):
         allow_none: bool,
     ) -> VariableReference | None:
         columns_number = randomness.next_int(
-            polars_dataframe_min_columns_number, polars_dataframe_max_columns_number
+            polars_dataframe_min_columns_number, polars_dataframe_max_columns_number + 1
         )
 
         csv_grammar = create_csv_grammar(
@@ -354,11 +353,9 @@ class PolarsDataframeStatement(VariableCreatingStatement):
         self._fuzzer = fuzzer
         self._csv_string = str(derivation_tree)
 
-        polars_dataframe_type_info = test_case.test_cluster.type_system.to_type_info(
-            pl.DataFrame
+        polars_dataframe_instance = (
+            test_case.test_cluster.type_system.convert_type_hint(pl.DataFrame)
         )
-
-        polars_dataframe_instance = Instance(polars_dataframe_type_info)
 
         super().__init__(
             test_case,

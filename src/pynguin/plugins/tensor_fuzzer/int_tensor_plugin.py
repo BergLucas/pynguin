@@ -52,7 +52,9 @@ int_tensor_max_ndim_length: int = 0
 int_tensor_min_number: int = 0
 int_tensor_max_number: int = 0
 
-int_tensor_types: set[type] = set()
+
+int_tensor_types: list[type] = []
+int_tensor_instances: set[ProperType] = set()
 
 
 def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
@@ -108,20 +110,6 @@ def parser_hook(parser: ArgumentParser) -> None:  # noqa: D103
     )
 
 
-def _create_int_tensor_type(ndim: int) -> type:
-    """Create a type for an int tensor with a given number of dimensions.
-
-    Args:
-        ndim: The number of dimensions
-
-    Returns:
-        A type for an int tensor
-    """
-    if ndim == 1:
-        return list[int]
-    return list[_create_int_tensor_type(ndim - 1)]  # type: ignore[misc]
-
-
 def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     global int_tensor_weight  # noqa: PLW0603
     global int_tensor_concrete_weight  # noqa: PLW0603
@@ -142,17 +130,32 @@ def configuration_hook(plugin_config: Namespace) -> None:  # noqa: D103
     int_tensor_max_number = plugin_config.int_tensor_max_number
 
 
+def _create_int_tensor_type(ndim: int) -> type:
+    """Create a type for an int tensor with a given number of dimensions.
+
+    Args:
+        ndim: The number of dimensions
+
+    Returns:
+        A type for an int tensor
+    """
+    if ndim == 1:
+        return list[int]
+    return list[_create_int_tensor_type(ndim - 1)]  # type: ignore[misc]
+
+
 def types_hook() -> list[type]:  # noqa: D103
-    int_tensor_types.update(
+    int_tensor_types.extend(
         _create_int_tensor_type(ndim)
         for ndim in range(int_tensor_min_ndim, int_tensor_max_ndim + 1)
     )
-    return list(int_tensor_types)
+    return int_tensor_types
 
 
 def test_cluster_hook(test_cluster: TestCluster) -> None:  # noqa: D103
     for int_tensor_type in int_tensor_types:
         typ = test_cluster.type_system.convert_type_hint(int_tensor_type)
+        int_tensor_instances.add(typ)
         test_cluster.set_concrete_weight(
             typ, int_tensor_concrete_weight / len(int_tensor_types)
         )
@@ -248,7 +251,7 @@ class _IntTensorSupportedTypes(SupportedTypes):
     """Supported types for int tensors."""
 
     def visit_instance(self, left: Instance) -> bool:
-        return left.type.raw_type in int_tensor_types
+        return left in int_tensor_instances
 
     def visit_tuple_type(self, left: TupleType) -> bool:
         return False

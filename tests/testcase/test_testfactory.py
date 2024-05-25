@@ -131,10 +131,11 @@ def test_add_primitive(test_case_mock, default_variable_manager):
 def test_add_constructor(
     provide_callables_from_fixtures_modules, default_test_case, default_variable_manager
 ):
+    owner = default_test_case.test_cluster.type_system.to_type_info(
+        provide_callables_from_fixtures_modules["Basket"]
+    )
     generic_constructor = gao.GenericConstructor(
-        owner=default_test_case.test_cluster.type_system.to_type_info(
-            provide_callables_from_fixtures_modules["Basket"]
-        ),
+        owner=owner,
         inferred_signature=InferredSignature(
             signature=Signature(
                 parameters=[
@@ -151,6 +152,9 @@ def test_add_constructor(
             },
             type_system=default_test_case.test_cluster.type_system,
         ),
+    )
+    generic_constructor.inferred_signature.return_type = (
+        default_test_case.test_cluster.type_system.make_instance(owner)
     )
     factory = tf.TestFactory(default_variable_manager, default_test_case.test_cluster)
     result = factory.add_constructor(default_test_case, generic_constructor, position=0)

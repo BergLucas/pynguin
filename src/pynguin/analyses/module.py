@@ -29,6 +29,7 @@ from types import MethodDescriptorType
 from types import ModuleType
 from types import WrapperDescriptorType
 from typing import Any
+from typing import _BaseGenericAlias  # type: ignore[attr-defined]  # noqa: PLC2701
 
 import astroid
 
@@ -1530,7 +1531,61 @@ def __analyse_included_functions(
         )
 
 
-def __analyse_plugins_types(
+def __analyse_generic_alias(
+    *,
+    generic_alias: _BaseGenericAlias | GenericAlias,
+    root_module_name: str,
+    type_inference_strategy: TypeInferenceStrategy,
+    test_cluster: ModuleTestCluster,
+    parse_results: dict[str, _ModuleParseResult],
+    seen_classes: set[type],
+    module: ModuleType | None = None,
+) -> None:
+    LOGGER.debug("Analysing generic alias %s", generic_alias)
+
+    raw_class: type = generic_alias.__origin__
+
+    __analyse_raw_class(
+        raw_class=raw_class,
+        root_module_name=root_module_name,
+        type_inference_strategy=type_inference_strategy,
+        test_cluster=test_cluster,
+        parse_results=parse_results,
+        seen_classes=seen_classes,
+        module=module,
+    )
+
+    type_info = test_cluster.type_system.to_type_info(raw_class)
+
+    if type_info.is_abstract:
+        return
+
+    results = parse_results[raw_class.__module__]
+
+    class_ast = get_class_node_from_ast(results.syntax_tree, type_info.name)
+    __add_symbols(class_ast, type_info)
+    constructor_ast = get_function_node_from_ast(class_ast, "__init__")
+    description = get_function_description(constructor_ast)
+    raised_exceptions = description.raises if description is not None else set()
+
+    generic = GenericConstructor(
+        type_info,
+        test_cluster.type_system.infer_type_info(
+            raw_class.__init__,  # type: ignore[misc]
+            type_inference_strategy=type_inference_strategy,
+        ),
+        raised_exceptions,
+        module,
+    )
+
+    generic.inferred_signature.return_type = test_cluster.type_system.convert_type_hint(
+        generic_alias
+    )
+
+    test_cluster.add_generator(generic)
+
+
+def __analyse_plugins_types(  # noqa: C901
     *,
     root_module_name: str,
     type_inference_strategy: TypeInferenceStrategy,
@@ -1586,7 +1641,17 @@ def __analyse_plugins_types(
             else:
                 module = None
 
-            if inspect.isclass(plugin_type):
+            if isinstance(plugin_type, _BaseGenericAlias | GenericAlias):
+                __analyse_generic_alias(
+                    generic_alias=plugin_type,
+                    root_module_name=root_module_name,
+                    type_inference_strategy=type_inference_strategy,
+                    test_cluster=test_cluster,
+                    parse_results=parse_results,
+                    seen_classes=seen_classes,
+                    module=module,
+                )
+            elif inspect.isclass(plugin_type):
                 __analyse_raw_class(
                     raw_class=plugin_type,
                     root_module_name=root_module_name,

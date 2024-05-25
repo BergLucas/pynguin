@@ -131,8 +131,9 @@ def provide_callables_from_fixtures_modules(
 
 @pytest.fixture()
 def constructor_mock(type_system) -> GenericConstructor:
-    return GenericConstructor(
-        owner=TypeInfo(SomeType),
+    owner = TypeInfo(SomeType)
+    constructor = GenericConstructor(
+        owner=owner,
         inferred_signature=InferredSignature(
             signature=inspect.Signature(
                 parameters=[
@@ -148,6 +149,8 @@ def constructor_mock(type_system) -> GenericConstructor:
             type_system=type_system,
         ),
     )
+    constructor.inferred_signature.return_type = type_system.make_instance(owner)
+    return constructor
 
 
 @pytest.fixture()

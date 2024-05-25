@@ -301,10 +301,6 @@ class GenericConstructor(GenericCallableAccessibleObject, GenericOwnedAccessible
             raised_exceptions,
         )
         GenericOwnedAccessibleObject.__init__(self, owner, exporter_module)
-        self._generated_type = Instance(owner)
-
-    def generated_type(self) -> ProperType:  # noqa: D102
-        return self._generated_type
 
     def is_constructor(self) -> bool:  # noqa: D102
         return True
@@ -352,7 +348,6 @@ class GenericMethod(GenericCallableAccessibleObject, GenericOwnedAccessibleObjec
             self, method, inferred_signature, raised_exceptions
         )
         GenericOwnedAccessibleObject.__init__(self, owner, exporter_module)
-        self._generated_type = inferred_signature.return_type
         self._method_name = method_name
 
     @property

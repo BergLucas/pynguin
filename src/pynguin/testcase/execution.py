@@ -1426,7 +1426,10 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
         sending_connection.close()
         receiving_connection.close()
 
-        process.join()
+        process.join(timeout=self._maximum_test_execution_timeout)
+
+        if process.exitcode is None:
+            process.kill()
 
         randomness.RNG.setstate(random_state)
 
@@ -1531,7 +1534,10 @@ class SubprocessTestCaseExecutor(TestCaseExecutor):
         sending_connection.close()
         receiving_connection.close()
 
-        process.join()
+        process.join(timeout=self._maximum_test_execution_timeout)
+
+        if process.exitcode is None:
+            process.kill()
 
         randomness.RNG.setstate(random_state)
 

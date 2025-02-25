@@ -16,11 +16,13 @@ import dataclasses
 import inspect
 import logging
 import os
+import signal
 import sys
 import threading
 
 from abc import abstractmethod
 from importlib import reload
+from pathlib import Path
 from queue import Empty
 from queue import Queue
 from types import ModuleType
@@ -28,6 +30,10 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypeVar
 from typing import cast
+
+import dill  # noqa: S403
+import multiprocess as mp
+import multiprocess.connection as mp_conn
 
 # Needs to be loaded, i.e., in sys.modules for the execution of assertions to work.
 import pytest  # noqa: F401
@@ -38,6 +44,7 @@ import pynguin.assertion.assertion as ass
 import pynguin.assertion.assertion_to_ast as ass_to_ast
 import pynguin.assertion.assertion_trace as at
 import pynguin.configuration as config
+import pynguin.ga.testcasechromosome as tcc
 import pynguin.testcase.statement as stmt
 import pynguin.testcase.statement_to_ast as stmt_to_ast
 import pynguin.testcase.variablereference as vr
@@ -53,10 +60,13 @@ from pynguin.analyses.typesystem import TupleType
 from pynguin.instrumentation.instrumentation import ArtificialInstr
 from pynguin.instrumentation.instrumentation import CheckedCoverageInstrumentation
 from pynguin.instrumentation.instrumentation import InstrumentationTransformer
+from pynguin.instrumentation.machinery import InstrumentationFinder
 from pynguin.instrumentation.tracer import ExecutionTrace
 from pynguin.instrumentation.tracer import ExecutionTracer
 from pynguin.instrumentation.tracer import InstrumentationExecutionTracer
+from pynguin.testcase import export
 from pynguin.testcase.mocking import mocks_to_use
+from pynguin.utils import randomness
 from pynguin.utils.mirror import Mirror
 
 
@@ -233,6 +243,27 @@ class ExecutionContext:
         """
         self._global_namespace[alias] = self._module_provider.get_module(module_name)
 
+    def __getstate__(self):
+        new_global_namespace = self._global_namespace.copy()
+        new_global_namespace.pop("__builtins__", None)
+        return {
+            "module_provider": self._module_provider,
+            "local_namespace": self._local_namespace,
+            "variable_names": self._variable_names,
+            "module_aliases": self._module_aliases,
+            "global_namespace": new_global_namespace,
+            "has_builtins": "__builtins__" in self._global_namespace,
+        }
+
+    def __setstate__(self, state: dict):
+        self._module_provider = state["module_provider"]
+        self._local_namespace = state["local_namespace"]
+        self._variable_names = state["variable_names"]
+        self._module_aliases = state["module_aliases"]
+        self._global_namespace = state["global_namespace"]
+        if state["has_builtins"]:
+            self.add_new_module_alias("builtins", "__builtins__")
+
 
 class RemoteExecutionObserver(abc.ABC):
     """A remote observer that can be used to observe the execution of a test case.
@@ -259,6 +290,23 @@ class RemoteExecutionObserver(abc.ABC):
 
     def __init__(self) -> None:  # noqa: B027
         """Initializes the remote observer."""
+
+    @property
+    def state(self) -> dict[str, Any]:
+        """The state of the observer.
+
+        Returns:
+            The state of the observer
+        """
+        return {}
+
+    @state.setter  # noqa: B027
+    def state(self, state: dict[str, Any]) -> None:
+        """Set the state of the observer.
+
+        Args:
+            state: The new state
+        """
 
     @abstractmethod
     def before_test_case_execution(self, test_case: tc.TestCase):
@@ -320,6 +368,13 @@ class RemoteExecutionObserver(abc.ABC):
             exec_ctx: the current execution context.
             exception: the exception that was thrown, if any.
         """
+
+    def __getstate__(self) -> dict[str, Any]:
+        return self.state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__init__()  # type: ignore[misc]
+        self.state = state
 
 
 class ExecutionObserver(abc.ABC):
@@ -460,6 +515,18 @@ class RemoteReturnTypeObserver(RemoteExecutionObserver):
     def __init__(self):
         """Initializes the remote observer."""
         self._return_type_local_state = RemoteReturnTypeObserver.RemoteReturnTypeLocalState()
+
+    @property
+    def state(self) -> dict[str, Any]:  # noqa: D102
+        return {
+            "return_type_trace": self._return_type_local_state.return_type_trace,
+            "return_type_generic_args": self._return_type_local_state.return_type_generic_args,
+        }
+
+    @state.setter
+    def state(self, state: dict[str, Any]):  # noqa: RUF100
+        self._return_type_local_state.return_type_trace = state["return_type_trace"]
+        self._return_type_local_state.return_type_generic_args = state["return_type_generic_args"]
 
     def before_test_case_execution(self, test_case: tc.TestCase):
         """Not used.
@@ -766,7 +833,11 @@ class ModuleProvider:
             if hasattr(module_to_mock, module_to_mock_name):
                 setattr(module_to_mock, module_to_mock_name, mock)
 
-    def add_mutated_version(self, module_name: str, mutated_module: ModuleType) -> None:
+    def add_mutated_version(
+        self,
+        module_name: str,
+        mutated_module: ModuleType,
+    ) -> None:
         """Adds a mutated version of a module to the collection of mutated modules.
 
         Args:
@@ -1189,6 +1260,556 @@ class TestCaseExecutor(AbstractTestCaseExecutor):
             self._tracer.enable()
 
 
+SUPPORTED_EXIT_CODE_MESSAGES = {
+    -signal.SIGILL: "Illegal instruction signal detected",
+    -signal.SIGABRT: "Abort signal detected",
+    -signal.SIGBUS: "Bus error signal detected",
+    -signal.SIGFPE: "Floating-point exception signal detected",
+    -signal.SIGKILL: "Kill signal detected, most likely due to an out of memory",
+    -signal.SIGSEGV: "Segmentation fault detected",
+}
+
+
+class SubprocessTestCaseExecutor(TestCaseExecutor):
+    """An executor that executes the generated test cases in a subprocess."""
+
+    def __init__(
+        self,
+        tracer: ExecutionTracer,
+        module_provider: ModuleProvider | None = None,
+        maximum_test_execution_timeout: int = 5,
+        test_execution_time_per_statement: int = 1,
+    ) -> None:
+        """Create new subprocess test case executor.
+
+        Args:
+            tracer: the execution tracer
+            module_provider: The used module provider
+            maximum_test_execution_timeout: The minimum timeout time (in seconds)
+                before a test case execution times out.
+            test_execution_time_per_statement: The amount of time (in seconds) that is
+                added to the timeout per statement, up to minimum_test_execution_timeout
+        """
+        super().__init__(
+            tracer,
+            module_provider,
+            maximum_test_execution_timeout,
+            test_execution_time_per_statement,
+        )
+
+    def execute(  # noqa: D102
+        self,
+        test_case: tc.TestCase,
+    ) -> ExecutionResult:
+        self._before_remote_test_case_execution(test_case)
+
+        receiving_connection, sending_connection = mp.Pipe(duplex=False)
+
+        remote_observers = tuple(self._yield_remote_observers())
+
+        reference_bindings = self._create_variable_binding(test_case)
+
+        args = (
+            self._tracer,
+            self._module_provider,
+            self._maximum_test_execution_timeout,
+            self._test_execution_time_per_statement,
+            remote_observers,
+            test_case,
+            reference_bindings,
+            sending_connection,
+        )
+
+        process = mp.Process(
+            target=self._execute_test_case_in_subprocess,
+            args=args,
+            daemon=True,
+        )
+
+        process.start()
+
+        has_results = receiving_connection.poll(
+            timeout=min(
+                self._maximum_test_execution_timeout,
+                self._test_execution_time_per_statement * len(test_case.statements),
+            ),
+        )
+
+        if not has_results:
+            if process.exitcode is None:
+                process.kill()
+                _LOGGER.warning("Experienced timeout from test-case execution")
+            elif process.exitcode in SUPPORTED_EXIT_CODE_MESSAGES:
+                _LOGGER.warning(
+                    "%s. Saving the test-case that caused the crash and continuing as"
+                    " if a timeout occurred.",
+                    SUPPORTED_EXIT_CODE_MESSAGES[process.exitcode],
+                )
+                self._save_crash_tests(test_case)
+            else:
+                _LOGGER.error(
+                    "Finished process exited with code %s and did not return a result.",
+                    process.exitcode,
+                )
+                raise RuntimeError("Bug in Pynguin!")
+
+            return ExecutionResult(timeout=True)
+
+        return_value: tuple[
+            ExecutionTracer,
+            ModuleProvider,
+            ExecutionResult,
+            dict[int, vr.VariableReference] | None,
+            tuple[Any, ...],
+        ] = receiving_connection.recv()
+
+        (
+            new_tracer,
+            new_module_provider,
+            result,
+            new_reference_bindings,
+            random_state,
+        ) = return_value
+
+        sending_connection.close()
+        receiving_connection.close()
+
+        process.join(timeout=self._maximum_test_execution_timeout)
+
+        if process.exitcode is None:
+            process.kill()
+
+        randomness.RNG.setstate(random_state)
+
+        self._module_provider = new_module_provider
+
+        if new_reference_bindings is not None:
+            self._fix_assertion_trace(
+                result.assertion_trace, reference_bindings, new_reference_bindings
+            )
+
+        self._tracer.state = new_tracer.state
+
+        self._after_remote_test_case_execution(test_case, result)
+
+        return result
+
+    def execute_multiple(  # noqa: D102, C901
+        self, test_cases: Iterable[tc.TestCase]
+    ) -> Iterable[ExecutionResult]:
+        test_cases_tuple = tuple(test_cases)
+
+        if not test_cases_tuple:
+            return ()
+
+        for test_case in test_cases_tuple:
+            self._before_remote_test_case_execution(test_case)
+
+        receiving_connection, sending_connection = mp.Pipe(duplex=False)
+
+        remote_observers = tuple(self._yield_remote_observers())
+
+        references_bindings = tuple(
+            self._create_variable_binding(test_case) for test_case in test_cases_tuple
+        )
+
+        args = (
+            self._tracer,
+            self._module_provider,
+            self._maximum_test_execution_timeout,
+            self._test_execution_time_per_statement,
+            remote_observers,
+            test_cases_tuple,
+            references_bindings,
+            sending_connection,
+        )
+
+        process = mp.Process(
+            target=self._execute_test_cases_in_subprocess,
+            args=args,
+            daemon=True,
+        )
+
+        process.start()
+
+        has_results = receiving_connection.poll(
+            timeout=min(
+                self._maximum_test_execution_timeout * len(test_cases_tuple),
+                sum(
+                    self._test_execution_time_per_statement * len(test_case.statements)
+                    for test_case in test_cases_tuple
+                ),
+            ),
+        )
+
+        if not has_results:
+            if process.exitcode is None:
+                process.kill()
+                _LOGGER.warning(
+                    "Timeout occurred. Falling back to executing each test-case"
+                    " in a separate process."
+                )
+            elif process.exitcode in SUPPORTED_EXIT_CODE_MESSAGES:
+                _LOGGER.warning(
+                    "%s. Falling back to executing each test-case in a separate process.",
+                    SUPPORTED_EXIT_CODE_MESSAGES[process.exitcode],
+                )
+            else:
+                _LOGGER.error(
+                    "Finished process exited with code %s and did not return the results.",
+                    process.exitcode,
+                )
+                raise RuntimeError("Bug in Pynguin!")
+
+            executor = SubprocessTestCaseExecutor(
+                self._tracer,
+                self._module_provider,
+                self._maximum_test_execution_timeout,
+                self._test_execution_time_per_statement,
+            )
+
+            for remote_observer in remote_observers:
+                executor.add_remote_observer(remote_observer)
+
+            return executor.execute_multiple(test_cases_tuple)
+
+        return_value: tuple[
+            ExecutionTracer,
+            ModuleProvider,
+            tuple[ExecutionResult, ...],
+            tuple[dict[int, vr.VariableReference] | None, ...],
+            tuple[Any, ...],
+        ] = receiving_connection.recv()
+
+        (
+            new_tracer,
+            new_module_provider,
+            results,
+            new_references_bindings,
+            random_state,
+        ) = return_value
+
+        sending_connection.close()
+        receiving_connection.close()
+
+        process.join(timeout=self._maximum_test_execution_timeout)
+
+        if process.exitcode is None:
+            process.kill()
+
+        randomness.RNG.setstate(random_state)
+
+        self._module_provider = new_module_provider
+
+        for result, reference_bindings, new_reference_bindings in zip(
+            results, references_bindings, new_references_bindings, strict=True
+        ):
+            if new_reference_bindings is not None:
+                self._fix_assertion_trace(
+                    result.assertion_trace, reference_bindings, new_reference_bindings
+                )
+
+        self._tracer.state = new_tracer.state
+
+        for test_case, result in zip(test_cases_tuple, results, strict=True):
+            self._after_remote_test_case_execution(test_case, result)
+
+        return results
+
+    @staticmethod
+    def _save_crash_tests(test_case: tc.TestCase) -> None:
+        chromosome = tcc.TestCaseChromosome(test_case)
+
+        exporter = export.PyTestChromosomeToAstVisitor()
+
+        chromosome.accept(exporter)
+
+        target_file = (
+            Path(config.configuration.test_case_output.crash_path).resolve()
+            / f"crash_test_{hash(test_case)}.py"
+        )
+
+        export.save_module_to_file(exporter.to_module(), target_file)
+
+    @staticmethod
+    def _create_variable_binding(
+        test_case: TestCase,
+    ) -> dict[int, vr.VariableReference]:
+        return {
+            position: reference
+            for position, statement in enumerate(test_case.statements)
+            if (reference := statement.ret_val) is not None and not reference.is_none_type()
+        }
+
+    @staticmethod
+    def _fix_assertion_trace(
+        assertion_trace: at.AssertionTrace,
+        old_reference_bindings: dict[int, vr.VariableReference],
+        new_reference_bindings: dict[int, vr.VariableReference],
+    ) -> None:
+        memo = {
+            new_reference: old_reference_bindings[position]
+            for position, new_reference in new_reference_bindings.items()
+        }
+
+        all_assertions = assertion_trace.get_all_assertions()
+        assertion_trace.clear()
+        for position, assertions in all_assertions.items():
+            for assertion in assertions:
+                assertion_trace.add_entry(position, assertion.clone(memo))
+
+    @staticmethod
+    def _execute_test_case_in_subprocess(  # noqa: PLR0917
+        tracer: ExecutionTracer,
+        module_provider: ModuleProvider,
+        maximum_test_execution_timeout: int,
+        test_execution_time_per_statement: int,
+        remote_observers: tuple[RemoteExecutionObserver, ...],
+        test_case: tc.TestCase,
+        reference_bindings: dict[int, vr.VariableReference],
+        sending_connection: mp_conn.Connection,
+    ) -> None:
+        SubprocessTestCaseExecutor._replace_tracer(tracer)
+
+        executor = TestCaseExecutor(
+            tracer,
+            module_provider,
+            maximum_test_execution_timeout,
+            test_execution_time_per_statement,
+        )
+
+        for remote_observer in remote_observers:
+            executor.add_remote_observer(remote_observer)
+
+        result = executor.execute(test_case)
+
+        tracer.current_thread_identifier = threading.current_thread().ident
+
+        SubprocessTestCaseExecutor._fix_result_for_pickle(result)
+
+        new_reference_bindings = SubprocessTestCaseExecutor._create_new_reference_bindings(
+            result,
+            reference_bindings,
+        )
+
+        sending_connection.send((
+            tracer,
+            module_provider,
+            result,
+            new_reference_bindings,
+            randomness.RNG.getstate(),
+        ))
+
+        tracer.current_thread_identifier = -1
+
+    @staticmethod
+    def _execute_test_cases_in_subprocess(  # noqa: PLR0917
+        tracer: ExecutionTracer,
+        module_provider: ModuleProvider,
+        maximum_test_execution_timeout: int,
+        test_execution_time_per_statement: int,
+        remote_observers: tuple[RemoteExecutionObserver, ...],
+        test_cases: tuple[tc.TestCase, ...],
+        references_bindings: tuple[dict[int, vr.VariableReference], ...],
+        sending_connection: mp_conn.Connection,
+    ) -> None:
+        SubprocessTestCaseExecutor._replace_tracer(tracer)
+
+        executor = TestCaseExecutor(
+            tracer,
+            module_provider,
+            maximum_test_execution_timeout,
+            test_execution_time_per_statement,
+        )
+
+        for remote_observer in remote_observers:
+            executor.add_remote_observer(remote_observer)
+
+        results = tuple(executor.execute_multiple(test_cases))
+
+        tracer.current_thread_identifier = threading.current_thread().ident
+
+        for result in results:
+            SubprocessTestCaseExecutor._fix_result_for_pickle(result)
+
+        new_references_bindings = tuple(
+            SubprocessTestCaseExecutor._create_new_reference_bindings(  # noqa: FURB140
+                result,
+                reference_bindings,
+            )
+            for result, reference_bindings in zip(results, references_bindings, strict=True)
+        )
+
+        sending_connection.send((
+            tracer,
+            module_provider,
+            results,
+            new_references_bindings,
+            randomness.RNG.getstate(),
+        ))
+
+        tracer.current_thread_identifier = -1
+
+    @staticmethod
+    def _create_new_reference_bindings(
+        result: ExecutionResult,
+        reference_bindings: dict[int, vr.VariableReference],
+    ) -> dict[int, vr.VariableReference] | None:
+        try:
+            return (
+                reference_bindings
+                if result.assertion_trace.trace and not dill.detect.baditems(reference_bindings)
+                else None
+            )
+        except Exception as exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "Failed to fix reference bindings for pickle, final results might"
+                " differ from classic execution with same seed: %s",
+                exception,
+            )
+            return None
+
+    @staticmethod
+    def _replace_tracer(tracer: ExecutionTracer) -> None:
+        instrumentation_finder = sys.meta_path[0]
+
+        if isinstance(instrumentation_finder, InstrumentationFinder):
+            instrumentation_finder.instrumentation_tracer.tracer = tracer
+
+    @staticmethod
+    def _fix_result_for_pickle(result: ExecutionResult) -> None:  # noqa: C901
+        try:
+            if exception_bad_items := dill.detect.baditems(result.exceptions):
+                _LOGGER.warning(
+                    "Unpicklable exceptions, final results might differ"
+                    " from classic execution with same seed: %s",
+                    exception_bad_items,
+                )
+                result.exceptions = {
+                    position: exception
+                    for position, exception in result.exceptions.items()
+                    if exception not in exception_bad_items
+                }
+        except Exception as exception:  # noqa: BLE001
+            result.exceptions.clear()
+            _LOGGER.warning(
+                "Failed to fix exceptions for pickle, final results might differ"
+                " from classic execution with same seed: %s",
+                exception,
+            )
+
+        try:
+            if assertion_trace_bad_items := dill.detect.baditems(result.assertion_trace):
+                _LOGGER.warning(
+                    "Unpicklable assertion trace, final results might differ"
+                    " from classic execution with same seed: %s",
+                    assertion_trace_bad_items,
+                )
+                result.assertion_trace.clear()
+        except Exception as exception:  # noqa: BLE001
+            result.assertion_trace.clear()
+            _LOGGER.warning(
+                "Failed to fix assertion trace for pickle, final results might differ"
+                " from classic execution with same seed: %s",
+                exception,
+            )
+
+        try:
+            if execution_trace_bad_items := dill.detect.baditems(result.execution_trace):
+                _LOGGER.warning(
+                    "Unpicklable execution trace, final results might differ"
+                    " from classic execution with same seed: %s",
+                    execution_trace_bad_items,
+                )
+                result.execution_trace.executed_assertions.clear()
+        except Exception as exception:  # noqa: BLE001
+            result.execution_trace.executed_assertions.clear()
+            _LOGGER.warning(
+                "Failed to fix execution trace for pickle, final results might differ"
+                " from classic execution with same seed: %s",
+                exception,
+            )
+
+        try:
+            if proxy_knowledge_bad_items := dill.detect.baditems(result.proxy_knowledge):
+                _LOGGER.warning(
+                    "Unpicklable proxy knowledge, final results might differ"
+                    " from classic execution with same seed: %s",
+                    proxy_knowledge_bad_items,
+                )
+                result.proxy_knowledge.clear()
+        except Exception as exception:  # noqa: BLE001
+            result.proxy_knowledge.clear()
+            _LOGGER.warning(
+                "Failed to fix proxy knowledge for pickle, final results might differ"
+                " from classic execution with same seed: %s",
+                exception,
+            )
+
+        try:
+            if proper_return_type_trace_bad_items := dill.detect.baditems(
+                result.proper_return_type_trace
+            ):
+                _LOGGER.warning(
+                    "Unpicklable proper return type trace, final results might differ"
+                    " from classic execution with same seed: %s",
+                    proper_return_type_trace_bad_items,
+                )
+                result.proper_return_type_trace.clear()
+        except Exception as exception:  # noqa: BLE001
+            result.proper_return_type_trace.clear()
+            _LOGGER.warning(
+                "Failed to fix proper return type trace for pickle, final results might"
+                " differ from classic execution with same seed: %s",
+                exception,
+            )
+
+        try:
+            if raw_return_type_generic_args_bad_items := dill.detect.baditems(
+                result.raw_return_type_generic_args
+            ):
+                _LOGGER.warning(
+                    "Unpicklable raw return type generic args, final results might"
+                    " differ from classic execution with same seed: %s",
+                    raw_return_type_generic_args_bad_items,
+                )
+                result.raw_return_type_generic_args = {
+                    position: generic_args
+                    for position, generic_args in result.raw_return_type_generic_args.items()
+                    if all(
+                        type_ not in raw_return_type_generic_args_bad_items
+                        for type_ in generic_args
+                    )
+                }
+        except Exception as exception:  # noqa: BLE001
+            result.raw_return_type_generic_args.clear()
+            _LOGGER.warning(
+                "Failed to fix raw return type generic args for pickle, final results"
+                " might differ from classic execution with same seed: %s",
+                exception,
+            )
+
+        try:
+            if raw_return_types_bad_items := dill.detect.baditems(result.raw_return_types):
+                _LOGGER.warning(
+                    "Unpicklable raw return types, final results might differ"
+                    " from classic execution with same seed: %s",
+                    raw_return_types_bad_items,
+                )
+                result.raw_return_types = {
+                    position: type_
+                    for position, type_ in result.raw_return_types.items()
+                    if type_ not in raw_return_types_bad_items
+                }
+        except Exception as exception:  # noqa: BLE001
+            result.raw_return_types.clear()
+            _LOGGER.warning(
+                "Failed to fix raw return types for pickle, final results might differ"
+                " from classic execution with same seed: %s",
+                exception,
+            )
+
+
 class TypeTracingTestCaseExecutor(AbstractTestCaseExecutor):
     """A test case executor that delegates to another executor.
 
@@ -1269,6 +1890,16 @@ class RemoteTypeTracingObserver(RemoteExecutionObserver):
     def __init__(self):
         """Initializes the remote observer."""
         self._local_state = RemoteTypeTracingObserver.RemoteTypeTracingLocalState()
+
+    @property
+    def state(self) -> dict[str, Any]:  # noqa: D102
+        return dict(  # noqa: C408
+            proxies=self._local_state.proxies,
+        )
+
+    @state.setter
+    def state(self, state: dict[str, Any]) -> None:
+        self._local_state.proxies = state["proxies"]
 
     def before_test_case_execution(self, test_case: tc.TestCase):
         """Not used.

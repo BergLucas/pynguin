@@ -90,34 +90,45 @@ class InjectionInstrumentationTransformer(InstrumentationTransformer):
         super().__init__(instrumentation_tracer)
         self._instrumentation_adapters = instrumentation_adapters
 
-    def _visit_nodes(
-        self,
-        code: CodeType,
-        cfg: CFG,
-        code_object_id: int,
-        entry_node: ProgramGraphNode,
-    ) -> CodeType:
-        for adapter in self._instrumentation_adapters:
-            adapter.visit_entry_node(entry_node, code_object_id)
+    def instrument_module(self, module_code: CodeType) -> CodeType:  # noqa: D102
+        self._check_module_not_instrumented(module_code)
 
-        for node in cfg.nodes:
-            if node.is_artificial:
-                # Artificial nodes don't have a basic block, so we don't need to
-                # instrument anything.
-                continue
-
+        def create_instrumented_code(
+            code: CodeType,
+            cfg: CFG,
+            code_object_id: int,
+            entry_node: ProgramGraphNode,
+        ) -> CodeType:
             for adapter in self._instrumentation_adapters:
-                adapter.visit_node(cfg, code_object_id, node)
+                adapter.visit_entry_node(entry_node, code_object_id)
 
-        code = cfg.bytecode_cfg().to_code()
+            for node in cfg.nodes:
+                if node.is_artificial:
+                    # Artificial nodes don't have a basic block, so we don't need to
+                    # instrument anything.
+                    continue
 
-        return code.replace(
-            co_consts=tuple(
-                self._instrument_code_recursive(const, code_object_id)
-                if isinstance(const, CodeType)
-                else const
-                for const in code.co_consts
+                for adapter in self._instrumentation_adapters:
+                    adapter.visit_node(cfg, code_object_id, node)
+
+            code = cfg.bytecode_cfg().to_code()
+
+            return code.replace(
+                co_consts=tuple(
+                    self._instrument_code_recursive(
+                        const,
+                        create_instrumented_code,
+                        code_object_id,
+                    )
+                    if isinstance(const, CodeType)
+                    else const
+                    for const in code.co_consts
+                )
             )
+
+        return self._instrument_code_recursive(
+            module_code,
+            create_instrumented_code,
         )
 
 

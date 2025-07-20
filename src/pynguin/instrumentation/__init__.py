@@ -26,6 +26,7 @@ from pynguin.analyses.controlflow import ProgramGraphNode
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import CodeType
 
     from bytecode.cfg import BasicBlock
@@ -161,6 +162,7 @@ class InstrumentationTransformer(ABC):
         """
         return self._instrumentation_tracer
 
+    @abstractmethod
     def instrument_module(self, module_code: CodeType) -> CodeType:
         """Instrument the given code object of a module.
 
@@ -170,9 +172,6 @@ class InstrumentationTransformer(ABC):
         Returns:
             The instrumented code object of the module
         """
-        self._check_module_not_instrumented(module_code)
-
-        return self._instrument_code_recursive(module_code)
 
     def _check_module_not_instrumented(self, module_code: CodeType) -> None:
         subject_properties = self._instrumentation_tracer.get_subject_properties()
@@ -186,6 +185,7 @@ class InstrumentationTransformer(ABC):
     def _instrument_code_recursive(
         self,
         code: CodeType,
+        create_instrumented_code: Callable[[CodeType, CFG, int, ProgramGraphNode], CodeType],
         parent_code_object_id: int | None = None,
     ) -> CodeType:
         self._logger.debug("Instrumenting Code Object for %s", code.co_name)
@@ -195,7 +195,7 @@ class InstrumentationTransformer(ABC):
 
         code_object_id = self._instrumentation_tracer.create_code_object_id()
 
-        instrumented_code = self._visit_nodes(
+        instrumented_code = create_instrumented_code(
             code,
             cfg,
             code_object_id,
@@ -215,23 +215,3 @@ class InstrumentationTransformer(ABC):
         )
 
         return instrumented_code
-
-    @abstractmethod
-    def _visit_nodes(
-        self,
-        code: CodeType,
-        cfg: CFG,
-        code_object_id: int,
-        entry_node: ProgramGraphNode,
-    ) -> CodeType:
-        """Visit all nodes in the CFG and instrument them recursively.
-
-        Args:
-            code: The code object that should be instrumented
-            cfg: The control flow graph of the code object
-            code_object_id: The ID of the code object
-            entry_node: The entry node of the CFG
-
-        Returns:
-            The instrumented code object
-        """

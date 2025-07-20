@@ -35,5 +35,5 @@ def test_line_coverage(simple_module, tracer_mock):
     transformer = MonitoringInstrumentationTransformer(instrumentation_tracer, [adapter])
     transformer.instrument_module(simple_module.simple_function.__code__)
     simple_module.simple_function(1)
-    assert len(tracer_mock.register_line.mock_calls) == 2
-    assert tracer_mock.track_line_visit.mock_calls == [call(1)]
+    assert len(tracer_mock.register_line.mock_calls) == 1
+    assert tracer_mock.track_line_visit.mock_calls == [call(0)]

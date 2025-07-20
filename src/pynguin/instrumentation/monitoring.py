@@ -490,7 +490,7 @@ class LineCoverageMonitoringInstrumentation(MonitoringInstrumentationAdapter):
         basic_block = get_basic_block(node)
         file_name = cfg.bytecode_cfg().filename
 
-        lineno: int | None = None
+        lineno: int = basic_block[0].lineno  # type: ignore[union-attr,arg-type,unused-ignore]
         for instr in basic_block:
             if instr.lineno != lineno:  # type: ignore[union-attr,arg-type,unused-ignore]
                 lineno = instr.lineno  # type: ignore[union-attr,arg-type,unused-ignore]

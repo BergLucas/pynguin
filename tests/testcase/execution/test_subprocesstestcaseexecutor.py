@@ -30,6 +30,7 @@ from pynguin.testcase.execution import ModuleProvider
 from pynguin.testcase.execution import SubprocessTestCaseExecutor
 from pynguin.utils.generic.genericaccessibleobject import GenericFunction
 from tests.fixtures.crash.seg_fault import cause_segmentation_fault
+from tests.utils.version import only_3_10
 
 
 @pytest.fixture
@@ -132,6 +133,7 @@ def test_subprocess_exception_logging(caplog):
         assert f"Suppressed exception in subprocess: {exception_message}" in caplog.text
 
 
+@only_3_10
 def test_crashing_execution(tmp_path, cause_seg_fault_test_case):
     # prevent test output into the tests directory
     config.configuration.test_case_output.crash_path = tmp_path
@@ -149,6 +151,7 @@ def test_crashing_execution(tmp_path, cause_seg_fault_test_case):
     assert exit_code != 0, "Expected a non-zero exit code due to segmentation fault"
 
 
+@only_3_10
 def test_eof_error_during_receiving_results(default_test_case):
     """Test handling of EOFError during receiving results from subprocess."""
     config.configuration.module_name = "tests.fixtures.accessibles.accessible"
@@ -177,6 +180,7 @@ def test_eof_error_during_receiving_results(default_test_case):
             assert exit_code is None
 
 
+@only_3_10
 def test_empty_test_case_no_results(default_test_case):
     """Test handling of empty test case with no results."""
     config.configuration.module_name = "tests.fixtures.accessibles.accessible"
@@ -201,6 +205,7 @@ def test_empty_test_case_no_results(default_test_case):
             assert exit_code == 0
 
 
+@only_3_10
 def test_non_empty_test_case_no_results(short_test_case):
     """Test handling of non-empty test case with no results."""
     config.configuration.module_name = "tests.fixtures.accessibles.accessible"

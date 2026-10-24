@@ -79,9 +79,9 @@ maximum_memory = 3000
 test_execution_time_per_statement = 1
 
 [large_language_model]
+provider = "openai"
 api_key = ""
 model_name = "gpt-4o-mini"
-llm_url = ""
 temperature = 0.8
 hybrid_initial_population = false
 llm_test_case_percentage = 0.5
@@ -267,11 +267,11 @@ def expected_txt(tmp_path):
  'maximum_coverage_plateau=-1, minimum_coverage=100, '
  'minimum_plateau_iterations=-1, maximum_memory=3000, '
  'test_execution_time_per_statement=1), '
- "large_language_model=LLMConfiguration(api_key='', model_name='gpt-4o-mini', "
- "llm_url='', temperature=0.8, hybrid_initial_population=False, "
- 'llm_test_case_percentage=0.5, enable_response_caching=False, '
- 'call_llm_for_uncovered_targets=False, coverage_threshold=1, '
- 'call_llm_on_stall_detection=False, max_plateau_len=25, '
+ 'large_language_model=LLMConfiguration(provider=<LLMProvider.OPENAI: '
+ "'openai'>, api_key='', model_name='gpt-4o-mini', temperature=0.8, "
+ 'hybrid_initial_population=False, llm_test_case_percentage=0.5, '
+ 'enable_response_caching=False, call_llm_for_uncovered_targets=False, '
+ 'coverage_threshold=1, call_llm_on_stall_detection=False, max_plateau_len=25, '
  'max_llm_interventions=1), '
  'string_statement=StringStatementConfiguration(random_string_weight=0.3, '
  'faker_string_weight=0.3, fandango_string_weight=0.4, '
@@ -380,6 +380,8 @@ False
 25
 --large_language_model.model_name
 gpt-4o-mini
+--large_language_model.provider
+OPENAI
 --large_language_model.temperature
 0.8
 --local_search.local_search

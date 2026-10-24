@@ -45,8 +45,13 @@ class LLMTestCaseHandler:
         """
         python_code = self._model.extract_python_code_from_llm_output(llm_output)
         _logger.debug("Extracted Python code: %s.", python_code)
-        generated_tests: dict[str, str] = rewrite_tests(python_code)
-        tests_with_line_breaks = "\n\n".join(generated_tests.values())
+        generated_imports, generated_tests = rewrite_tests(python_code)
+        rewritten_sections: list[str] = []
+        if generated_imports:
+            rewritten_sections.append("\n".join(generated_imports))
+        if generated_tests:
+            rewritten_sections.append("\n\n".join(generated_tests.values()))
+        tests_with_line_breaks = "\n\n".join(rewritten_sections)
         _logger.debug("Rewritten tests: %s.", tests_with_line_breaks)
         save_llm_tests_to_file(tests_with_line_breaks, "rewritten_llm_test_cases.py")
         return tests_with_line_breaks

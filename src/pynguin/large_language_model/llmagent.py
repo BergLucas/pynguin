@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: MIT
 #
-"""This module generates unit tests for a given module using OpenAI's language model."""
+"""This module generates unit tests for a given module using a large language model."""
 
 import datetime
 import inspect
@@ -15,22 +15,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from pynguin.large_language_model.prompts.localsearchprompt import LocalSearchPrompt
-from pynguin.utils.report import LineAnnotation
-
-try:
-    import openai
-    from openai.types.chat import (
-        ChatCompletionMessageParam,
-        ChatCompletionSystemMessageParam,
-        ChatCompletionUserMessageParam,
-    )
-
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-
-
 import pynguin.configuration as config
 import pynguin.utils.statistics.stats as stat
 from pynguin.analyses.module import import_module
@@ -39,6 +23,7 @@ from pynguin.large_language_model.llmtestcasehandler import LLMTestCaseHandler
 from pynguin.large_language_model.prompts.assertiongenerationprompt import (
     AssertionGenerationPrompt,
 )
+from pynguin.large_language_model.prompts.localsearchprompt import LocalSearchPrompt
 from pynguin.large_language_model.prompts.prompt import Prompt
 from pynguin.large_language_model.prompts.testcasegenerationprompt import (
     TestCaseGenerationPrompt,
@@ -46,10 +31,14 @@ from pynguin.large_language_model.prompts.testcasegenerationprompt import (
 from pynguin.large_language_model.prompts.uncoveredtargetsprompt import (
     UncoveredTargetsPrompt,
 )
+from pynguin.utils.api_key_resolver import (
+    get_model_name,
+)
 from pynguin.utils.generic.genericaccessibleobject import (
     GenericCallableAccessibleObject,
 )
-from pynguin.utils.openai_key_resolver import get_llm_url, get_model_name, require_api_key
+from pynguin.utils.llm import LLM
+from pynguin.utils.report import LineAnnotation
 from pynguin.utils.statistics.runtimevariable import RuntimeVariable
 
 if TYPE_CHECKING:
@@ -177,12 +166,28 @@ def _find_lines(name: str) -> tuple[list[str], int] | None:
 
 
 class LLMAgent:
-    """A class to interact with OpenAI's language model for generating unit tests."""
+    """A class to interact with the configured provider's LLM for generating unit tests."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        provider: config.LLMProvider | None = None,
+        model_name: str | None = None,
+        temperature: float | None = None,
+    ):
         """Initializes the LLMAgent with configuration settings and cache."""
-        self._model_name = get_model_name()
-        self._temperature = config.configuration.large_language_model.temperature
+        if model_name is None:
+            self._model_name = get_model_name()
+        else:
+            self._model_name = model_name
+        if temperature is None:
+            self._temperature = config.configuration.large_language_model.temperature
+        else:
+            self._temperature = temperature
+        if provider is None:
+            self._provider = config.configuration.large_language_model.provider
+        else:
+            self._provider = provider
         self._llm_calls_counter = 0
         self._llm_calls_timer = 0
         self._llm_calls_with_no_python_code = 0
@@ -193,12 +198,9 @@ class LLMAgent:
         if config.configuration.large_language_model.enable_response_caching:
             self.cache = Cache()
 
-        api_key = require_api_key()
-        llm_url = get_llm_url()
-        kwargs: dict = {"api_key": api_key.get_secret_value()}
-        if llm_url:
-            kwargs["base_url"] = llm_url
-        self._client = openai.OpenAI(**kwargs)
+        self._client = LLM.create(
+            self._provider, model=self._model_name, temperature=self._temperature
+        )
 
     @property
     def llm_calls_counter(self) -> int:
@@ -251,15 +253,21 @@ class LLMAgent:
         return self._llm_calls_with_no_python_code
 
     def query(self, prompt: Prompt) -> str | None:
-        """Sends a query to the OpenAI API and returns the response.
+        """Sends a query to the provider's API and returns the response.
 
         Args:
             prompt: The prompt object to build the query.
 
         Returns:
-            The response from the OpenAI API, or None if the response is empty.
+            The response from the provider's API, or None if the response is empty.
         """
         prompt_text = prompt.build_prompt()
+
+        _logger.info(
+            "Querying model %s with following prompt : %s",
+            self._model_name,
+            prompt_text,
+        )
 
         if config.configuration.large_language_model.enable_response_caching:
             cached_response = self.cache.get(prompt_text)
@@ -269,35 +277,24 @@ class LLMAgent:
         start_time = time.time_ns()
         self._llm_calls_counter += 1
 
-        messages: list[ChatCompletionMessageParam] = [
-            ChatCompletionSystemMessageParam(role="system", content=prompt.system_message),
-            ChatCompletionUserMessageParam(role="user", content=prompt_text),
-        ]
-
         try:
-            response = self._client.chat.completions.create(
-                model=self._model_name,
-                messages=messages,
-                temperature=self._temperature,
+            response, usage = self._client.chat(
+                prompt=prompt_text, system_prompt=prompt.system_message
             )
-            if response.usage is not None:
-                self._llm_input_tokens += response.usage.prompt_tokens
-                self._llm_output_tokens += response.usage.completion_tokens
-            response_text = response.choices[0].message.content
-
+            if usage:
+                self._llm_input_tokens += usage["prompt_tokens"]
+                self._llm_output_tokens += usage["completion_tokens"]
             if (
                 config.configuration.large_language_model.enable_response_caching
-                and response_text is not None
+                and response is not None
             ):
-                self.cache.set(prompt_text, response_text)
-
-            if response_text:
-                save_prompt_info_to_file(prompt_text, response_text)
-            return response_text
-
-        except openai.OpenAIError as e:
+                self.cache.set(prompt_text, response)
+            if response:
+                save_prompt_info_to_file(prompt_text, response)
+            return response
+        except self._client.response_error as e:
             _logger.error(
-                "An error occurred while querying the OpenAI API. Model: %s, Prompt: %s, Error: %s",
+                "An error occurred while querying the LLM API. Model: %s, Prompt: %s, Error: %s",
                 self._model_name,
                 prompt_text,
                 e,
@@ -310,7 +307,8 @@ class LLMAgent:
 
     def clear_cache(self):
         """Clears all entries in the cache."""
-        self.cache.clear()
+        if config.configuration.large_language_model.enable_response_caching:
+            self.cache.clear()
 
     def generate_tests_for_module_under_test(self) -> str | None:
         """Generates test cases for the module under test.
@@ -354,7 +352,7 @@ class LLMAgent:
         Raises:
             ValueError: If no Python code block is found in the LLM output.
         """
-        python_markdown = r"```python([\s\S]+?)(?:```|$)"
+        python_markdown = r"```py(?:thon)?([\s\S]+?)(?:```|$)"
         if llm_output:
             code_blocks = re.findall(python_markdown, llm_output)
             if not code_blocks:

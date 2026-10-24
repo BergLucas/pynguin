@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import inspect
 import logging
+import traceback
 from typing import TYPE_CHECKING, Any, cast
 
 import pynguin.testcase.defaulttestcase as dtc
@@ -52,6 +53,7 @@ class StatementDeserializer:  # noqa: PLR0904
         self._ref_dict: dict[str, vr.VariableReference] = {}
         self._testcase = dtc.DefaultTestCase(self._test_cluster)
         self._uninterpreted_statements = 0
+        self._imports: dict[str, str] = {}
 
     @property
     def uninterpreted_statements(self) -> int:
@@ -74,6 +76,25 @@ class StatementDeserializer:  # noqa: PLR0904
         """Resets the state of the deserializer to parse a new test case."""
         self._ref_dict = {}
         self._testcase = dtc.DefaultTestCase(self._test_cluster)
+
+    def add_import(self, import_: ast.Import) -> None:
+        """Tries to register an import used in the next test cases.
+
+        Args:
+            import_: The ast.Import node
+        """
+        for alias in import_.names:
+            self._imports[alias.asname or alias.name] = alias.name
+
+    def add_import_from(self, import_from: ast.ImportFrom) -> None:
+        """Tries to register an import used in the next test cases.
+
+        Args:
+            import_from: The ast.ImportFrom node
+        """
+        for alias in import_from.names:
+            full_import = f"{import_from.module}.{alias.name}"
+            self._imports[alias.asname or alias.name] = full_import
 
     def add_assert_stmt(self, assert_: ast.Assert) -> bool:
         """Tries to add the assert in `assert_` to the current test case.
@@ -494,7 +515,14 @@ class StatementDeserializer:  # noqa: PLR0904
             The corresponding statement.
         """
         if not isinstance(unaryop.operand, ast.Constant):
-            return None
+            if isinstance(unaryop.op, ast.Not):
+                try:
+                    self._uninterpreted_statements += 1
+                    return ASTAssignStatement(self._testcase, unaryop, self._ref_dict)
+                except ValueError:
+                    return None
+            else:
+                return None
         val = unaryop.operand.value
         if isinstance(val, bool):
             return stmt.BooleanPrimitiveStatement(self._testcase, not val)
@@ -568,7 +596,9 @@ class StatementDeserializer:  # noqa: PLR0904
             logger.debug("Can't get called for %s", ast.unparse(call))
             call_id = ""
 
-        for obj in self._test_cluster.accessible_objects_under_test:
+        # Search for accessible objects in the Module Under Test and imported dependencies
+        # Builtin functions such as len() handled by try_generating_specific_function
+        for obj in self._test_cluster.callables:
             if isinstance(obj, GenericConstructor):
                 owner = str(obj.owner).rsplit(".", maxsplit=1)[-1].split("'")[0].rstrip(")")
                 if call_name == owner and call_id not in self._ref_dict:
@@ -742,12 +772,12 @@ class StatementDeserializer:  # noqa: PLR0904
         if isinstance(coll_node, ast.Tuple):
             coll_elems_type = TupleType(tuple(tp.type for tp in coll_elems))
         elif isinstance(coll_node, ast.List):
-            coll_elems_type = Instance(  # type:ignore[assignment]
+            coll_elems_type = Instance(  # type: ignore[assignment]
                 self._test_cluster.type_system.to_type_info(list),
                 (get_collection_type(coll_elems),),
             )
         else:
-            coll_elems_type = Instance(  # type:ignore[assignment]
+            coll_elems_type = Instance(  # type: ignore[assignment]
                 self._test_cluster.type_system.to_type_info(set),
                 (get_collection_type(coll_elems),),
             )
@@ -921,6 +951,22 @@ class AstToTestCaseTransformer(ast.NodeVisitor):
             else:
                 self._deserializer.add_assert_stmt(node)
 
+    def visit_Import(self, node: ast.Import) -> Any:  # noqa:N802
+        """Visits an Import node and tries to register it for future reference.
+
+        Args:
+            node: The import node.
+        """
+        self.deserializer.add_import(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:  # noqa:N802
+        """Visits an Import node and tries to register it for future reference.
+
+        Args:
+            node: The import node.
+        """
+        self.deserializer.add_import_from(node)
+
     @property
     def testcases(self) -> list[dtc.DefaultTestCase]:
         """Provides the testcases that could be generated from the given AST.
@@ -953,8 +999,7 @@ def deserialize_code_to_testcases(
     """
     transformer = AstToTestCaseTransformer(
         test_cluster,
-        create_assertions=config.configuration.test_case_output.assertion_generation
-        == config.AssertionGenerator.LLM,
+        create_assertions=True,
     )
     try:
         transformer.visit(ast.parse(test_file_contents))
@@ -965,6 +1010,6 @@ def deserialize_code_to_testcases(
             transformer.total_parsed_statements,
             uninterpreted_statements,
         )
-    except BaseException as e:  # noqa: BLE001
-        logger.error(e)
+    except BaseException:  # noqa: BLE001
+        logger.error(traceback.format_exc())
         return None

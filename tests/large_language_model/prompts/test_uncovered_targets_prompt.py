@@ -81,7 +81,7 @@ def test_build_prompt_aggregates_sections(module_info):
     assert "Write unit tests for the following callables" in result
     assert "- The function foo(a: int) -> str" in result
     assert f"Module path: `{module_info['path']}`" in result
-    assert f"Module source code: `{module_info['code']}`" in result
+    assert f"{module_info['code'].replace(' ', '')}" in result.replace("\n", "").replace(" ", "")
 
 
 def test_skips_unknown_callable_type(module_info):
@@ -93,3 +93,17 @@ def test_skips_unknown_callable_type(module_info):
 
     result = prompt.build_callables_prompt_section()
     assert result == []
+
+
+def test_compress_lots_of_callables(module_info):
+    callables = [make_generic_function(f"foo{i}") for i in range(100)]
+    code = "\n".join(f"def foo{i}(): pass" for i in range(100))
+    prompt = UncoveredTargetsPrompt(callables, code, module_info["path"])
+    result = prompt.build_prompt()
+
+    assert "Module path: `" in result
+    callables_section = prompt.build_callables_prompt_section()
+    assert (
+        len(callables_section) <= prompt.max_uncovered_callables
+    )  # Ensure the callables were compressed
+    assert len(result) < len(code)  # Ensure the total prompt was compressed

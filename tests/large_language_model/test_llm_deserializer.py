@@ -43,6 +43,7 @@ def test_cluster():
 
     mock_cluster.type_system = mock_type_system
     mock_cluster.accessible_objects_under_test = []
+    mock_cluster.callables = []
 
     return mock_cluster
 
@@ -432,13 +433,94 @@ def test_find_gen_callable_variants(  # noqa: PLR0917
     else:
         obj = MagicMock()
 
-    test_cluster.accessible_objects_under_test = [obj]
+    test_cluster.callables = [obj]
     result = deserializer.find_gen_callable(call)
 
     if should_match:
         assert result == obj
     else:
         assert result is None
+
+
+@pytest.mark.parametrize(
+    "assertion_code",
+    [
+        "assert x == y",
+        "assert x is 1",
+        "assert x is y",
+        "assert x",
+    ],
+)
+def test_create_assert_stmt(assertion_code, deserializer):
+    mock_ref = MagicMock(spec=VariableReference)
+    mock_ref.type = Instance(TypeInfo(dict))
+    deserializer._ref_dict = {
+        "x": mock_ref,
+        "y": mock_ref,
+    }
+
+    assert_node = ast.parse(assertion_code).body[0]
+
+    assert deserializer.create_assert_stmt(assert_node) is not None
+
+
+def test_equality_assignment(deserializer):
+    assign_node = ast.parse("x = y == z").body[0]
+    deserializer._ref_dict = {
+        "y": MagicMock(spec=vr.VariableReference),
+        "z": MagicMock(spec=vr.VariableReference),
+    }
+
+    assert deserializer.add_assign_stmt(assign_node) is True
+
+
+def test_add_assign_stmt_unary_not_operation(deserializer):
+    deserializer._ref_dict = {"x": MagicMock(spec=vr.VariableReference)}
+    assign_node = ast.parse("y = not x").body[0]
+
+    assert deserializer.add_assign_stmt(assign_node) is True
+
+
+@pytest.mark.parametrize(
+    "expected_imports",
+    [
+        ("from os import path", {"path": "os.path"}),
+        ("import os", {"os": "os"}),
+        ("import os as operating_system", {"operating_system": "os"}),
+        ("from os import path as os_path", {"os_path": "os.path"}),
+        ("from os import path, system", {"path": "os.path", "system": "os.system"}),
+        ("import os, sys", {"os": "os", "sys": "sys"}),
+        ("from os import path, system as sys", {"path": "os.path", "sys": "os.system"}),
+        ("from os import (path, system)", {"path": "os.path", "system": "os.system"}),
+        ("from os import (path, system as sys)", {"path": "os.path", "sys": "os.system"}),
+        ("from os.path import dirname", {"dirname": "os.path.dirname"}),
+        ("from os import *", {"*": "os.*"}),
+    ],
+)
+def test_add_imports(deserializer, expected_imports):
+    import_node = ast.parse(expected_imports[0]).body[0]
+    if isinstance(import_node, ast.ImportFrom):
+        deserializer.add_import_from(import_node)
+    else:
+        deserializer.add_import(import_node)
+    assert deserializer._imports == expected_imports[1]
+
+
+@pytest.mark.parametrize(
+    "nodes",
+    [
+        [
+            "x = None",
+            "y = None",
+            "r = x is y",
+        ],
+    ],
+)
+def test_chained_assignments(deserializer, nodes):
+    for node in nodes:
+        assign_node = ast.parse(node).body[0]
+        assert deserializer.add_assign_stmt(assign_node)
+        assert isinstance(deserializer.get_test_case(), dtc.DefaultTestCase)
 
 
 def test_add_assert_stmt_all_branches(deserializer):

@@ -16,7 +16,7 @@ from pynguin.ga.computations import BranchDistanceTestSuiteFitnessFunction
 from pynguin.large_language_model.llmagent import LLMAgent
 from pynguin.large_language_model.llmtestcasehandler import LLMTestCaseHandler
 from pynguin.large_language_model.parsing.helpers import unparse_test_case
-from pynguin.utils.openai_key_resolver import is_api_key_present
+from pynguin.utils.api_key_resolver import is_api_key_present
 
 
 @pytest.fixture
@@ -37,10 +37,11 @@ def test_extract_test_cases_from_llm_output(handler, mock_model):
             "pynguin.large_language_model.llmtestcasehandler.save_llm_tests_to_file"
         ) as mock_save,
     ):
-        mock_rewrite.return_value = {"test1": "def test_something(): pass"}
+        mock_rewrite.return_value = (["import pytest"], {"test1": "def test_something(): pass"})
 
         result = handler.extract_test_cases_from_llm_output("LLM raw output")
 
+        assert "import pytest" in result
         assert "def test_something()" in result
         mock_model.extract_python_code_from_llm_output.assert_called_once()
         mock_rewrite.assert_called_once_with("some_code")
@@ -60,7 +61,7 @@ def test_get_test_case_chromosomes_from_llm_results_deserialization_none(handler
     with (
         patch(
             "pynguin.large_language_model.llmtestcasehandler.rewrite_tests",
-            return_value={"test": "code"},
+            return_value=(["import pytest"], {"test": "code"}),
         ),
         patch(
             "pynguin.large_language_model.llmtestcasehandler.deserialize_code_to_testcases",
@@ -85,7 +86,7 @@ def test_get_test_case_chromosomes_from_llm_results_success(handler, mock_model)
     with (
         patch(
             "pynguin.large_language_model.llmtestcasehandler.rewrite_tests",
-            return_value={"test": "code"},
+            return_value=(["import pytest"], {"test": "code"}),
         ),
         patch(
             "pynguin.large_language_model.llmtestcasehandler.deserialize_code_to_testcases"

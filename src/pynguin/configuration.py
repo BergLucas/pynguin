@@ -227,6 +227,13 @@ class Selection(str, enum.Enum):
     """Tournament selection.  Use `tournament_size` to set size."""
 
 
+class LLMProvider(str, enum.Enum):
+    """An enum for the available LLM service providers."""
+
+    OPENAI = "openai"
+    OLLAMA = "ollama"
+
+
 @dataclasses.dataclass
 class StatisticsOutputConfiguration:
     """Configuration related to output."""
@@ -813,18 +820,19 @@ class StoppingConfiguration:
 class LLMConfiguration:
     """Configuration for the LLM."""
 
+    provider: LLMProvider = LLMProvider.OPENAI
+    """The provider for all LLM-based operations."""
+
     api_key: str = ""
-    """The api key to call OpenAI LLM with."""
+    """The api key to call the LLM with. Use the key associated to the given provider."""
 
     model_name: str = "gpt-4o-mini"
-    """The OpenAI Model to use for completions."""
-
-    llm_url: str = ""
-    """Base URL for the LLM API endpoint (leave empty for default OpenAI)."""
+    """The LLM to use for completions."""
 
     temperature: float = 0.8
     """The temperature to use when querying the model.
-    The value must be from [0.0, 1.0]."""
+    The value must be from [0.0, 1.0].
+    Some proviuders do not support this parameter, which will thus be ignored."""
 
     hybrid_initial_population: bool = False
     """Whether to include the LLM test cases in the initial population."""

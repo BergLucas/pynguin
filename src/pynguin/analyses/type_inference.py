@@ -185,7 +185,7 @@ class LLMInference(InferenceProvider):
 
     # ---- LLM I/O (parallel) ----
     def _send_prompt(self, prompt: str) -> str:
-        return self._model.chat(prompt) or ""
+        return self._model.chat(prompt)[0] or ""
 
     def _send_prompts(
         self, prompts: Mapping[Callable[..., Any], str]
@@ -494,7 +494,7 @@ class HintInference(InferenceProvider):
             # The import used in the type hint could also be conditional on
             # typing.TYPE_CHECKING, e.g., to avoid circular imports, in which case this
             # also fails.
-        except (AttributeError, NameError, TypeError) as exc:
+        except (AttributeError, NameError, TypeError, ModuleNotFoundError) as exc:
             _LOGGER.debug("Could not retrieve type hints for %s", method)
             _LOGGER.debug(exc)
             hints = {}

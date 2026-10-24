@@ -69,6 +69,7 @@ setuptools = "^80.9.0"
 toml = "^0.10.2"
 psutil = "^7.1.1"
 rstr = "^3.2.2"
+ollama = { version = "^0.6.2", optional = true }
 openai = { version = "^1.72.0", optional = true }
 python-dotenv = { version = "^1.0.0", optional = true }
 numpy = { version = "^1.26.4", optional = true }
@@ -102,6 +103,7 @@ pytest-sugar = "^1.0.0"
 pytest-xdist = "^3.6.0"
 
 [tool.poetry.extras]
+ollama = [ "ollama", "python-dotenv" ]
 openai = [ "openai", "python-dotenv" ]
 numpy = [ "numpy" ]
 typing = [ "mypy", "typing-extensions" ]
@@ -287,7 +289,7 @@ skip_install = true
 allowlist_externals = ["make", "poetry"]
 commands_pre = [
   ["poetry", "env", "use", "{env_name}"],
-  ["poetry", "install", "--extras", "openai numpy fandango-faker"]
+  ["poetry", "install", "--all-extras", "--all-groups"],
 ]
 commands = [
   ["make", "check"],

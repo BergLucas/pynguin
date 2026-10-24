@@ -15,7 +15,7 @@ import ast
 import logging
 import re
 import sys
-from typing import Any
+from typing import Any, cast
 
 from pynguin.large_language_model.parsing.helpers import (
     has_bound_variables,
@@ -466,13 +466,122 @@ class StmtRewriter(ast.NodeTransformer):  # noqa: PLR0904
         if not fn_def_node.name.startswith("test_"):
             return fn_def_node
 
+        parametrize_stmts, parametrize_args = self._lower_parametrize_decorators(fn_def_node)
+        fn_def_node.decorator_list = []
+        if parametrize_args:
+            fn_def_node.args.args = [
+                arg for arg in fn_def_node.args.args if arg.arg not in parametrize_args
+            ]
         fn_def_node.args.args = [arg for arg in fn_def_node.args.args if arg.arg != "self"]
         # Visit the main body
-        new_body = self.visit_block_helper(fn_def_node.body)
+        new_body = parametrize_stmts + self.visit_block_helper(fn_def_node.body)
         fn_def_node.body = new_body
         ast.fix_missing_locations(fn_def_node)
 
         return fn_def_node
+
+    def _lower_parametrize_decorators(
+        self, fn_def_node: ast.FunctionDef
+    ) -> tuple[list[ast.stmt], set[str]]:
+        """Convert supported parametrize decorators into concrete assignments.
+
+        The current deserializer can consume plain assignments, but not pytest
+        decorators. For the common single-example case, we lower the decorator into
+        an assignment for the parametrized argument and drop the decorator.
+        """
+        lowered_stmts: list[ast.stmt] = []
+        lowered_args: set[str] = set()
+        for decorator in fn_def_node.decorator_list:
+            parametrize_stmt = self._lower_parametrize_decorator(decorator)
+            if parametrize_stmt is None:
+                continue
+            lowered_stmts.append(parametrize_stmt)
+            lowered_args.update(self._collect_parametrize_target_names(parametrize_stmt))
+        return lowered_stmts, lowered_args
+
+    def _lower_parametrize_decorator(self, decorator: ast.expr) -> ast.Assign | None:
+        """Lower a supported pytest.parametrize decorator to a plain assignment."""
+        if not isinstance(decorator, ast.Call):
+            return None
+        if not self._is_pytest_parametrize(decorator.func):
+            return None
+        if len(decorator.args) < 2:
+            return None
+
+        target_names = self._parse_parametrize_targets(decorator.args[0])
+        if not target_names:
+            return None
+
+        param_values = self._parse_parametrize_values(decorator.args[1], len(target_names))
+        if param_values is None:
+            return None
+
+        if len(target_names) == 1:
+            target: ast.expr = ast.Name(id=target_names[0], ctx=ast.Store())
+            value: ast.expr = param_values
+        else:
+            target = ast.Tuple(
+                elts=[ast.Name(id=name, ctx=ast.Store()) for name in target_names],
+                ctx=ast.Store(),
+            )
+            value = param_values
+
+        return ast.Assign(targets=[target], value=value)
+
+    def _is_pytest_parametrize(self, func: ast.AST) -> bool:
+        """Return True for pytest.mark.parametrize calls."""
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr == "parametrize"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "mark"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "pytest"
+        )
+
+    def _parse_parametrize_targets(self, target_node: ast.AST) -> list[str] | None:
+        """Parse the first parametrize argument into target names."""
+        if isinstance(target_node, ast.Constant) and isinstance(target_node.value, str):
+            return [name.strip() for name in target_node.value.split(",") if name.strip()]
+        if isinstance(target_node, ast.Tuple | ast.List):
+            target_names: list[str] = []
+            for element in target_node.elts:
+                if not isinstance(element, ast.Constant) or not isinstance(element.value, str):
+                    return None
+                target_names.append(element.value.strip())
+            return target_names
+        return None
+
+    def _parse_parametrize_values(
+        self, values_node: ast.AST, number_of_targets: int
+    ) -> ast.expr | None:
+        """Parse the first parametrize example into a value expression."""
+        examples: list[ast.AST]
+        if isinstance(values_node, ast.List | ast.Tuple):
+            examples = list(values_node.elts)
+        else:
+            return None
+        if not examples:
+            return None
+
+        first_example = examples[0]
+        if number_of_targets == 1:
+            return cast("ast.expr", first_example)
+        if isinstance(first_example, ast.Tuple) and len(first_example.elts) == number_of_targets:
+            return ast.Tuple(elts=list(first_example.elts), ctx=ast.Load())
+        return None
+
+    def _collect_parametrize_target_names(self, assign_node: ast.Assign) -> set[str]:
+        """Collect target names from a lowered parametrize assignment."""
+        target_names: set[str] = set()
+        for target in assign_node.targets:
+            if isinstance(target, ast.Name):
+                target_names.add(target.id)
+            elif isinstance(target, ast.Tuple):
+                for element in target.elts:
+                    if isinstance(element, ast.Name):
+                        target_names.add(element.id)
+        return target_names
 
     def visit_ClassDef(self, node: ast.ClassDef):  # noqa: N802
         """Transform the class by filtering and taking only test methods.
@@ -771,7 +880,7 @@ class StmtRewriter(ast.NodeTransformer):  # noqa: PLR0904
         return node
 
 
-def rewrite_tests(source: str) -> dict[str, str]:
+def rewrite_tests(source: str) -> tuple[list[str], dict[str, str]]:
     """Rewrite the tests in `source` so that they can be parsed.
 
     By AstToTestCaseTransformer.
@@ -780,7 +889,9 @@ def rewrite_tests(source: str) -> dict[str, str]:
         source: the source code containing tests.
 
     Returns:
-        a dictionary with function names as keys and rewritten tests as values.
+        a tuple containing:
+            - a list of import statements as source strings.
+            - a dictionary with function names as keys and rewritten tests as values.
     """
     # Sometimes LLM returns function definition with only a comment inside
     # which results in syntax error.
@@ -791,7 +902,8 @@ def rewrite_tests(source: str) -> dict[str, str]:
     source_fixed = fixup_result(source_without_empty_methods)
     module_node: ast.Module = ast.parse(source_fixed)
     function_definitions = extract_function_defs(module_node)
-    return process_function_defs(function_definitions, module_node)
+    imports = extract_import_statements(module_node)
+    return imports, process_function_defs(function_definitions, module_node)
 
 
 def rewrite_test(fn_def_node: ast.FunctionDef):
@@ -986,3 +1098,42 @@ def fixup_result(result):
         if line_to_rm is None or line_to_rm >= len(lines):
             return fixup_result("\n".join(lines[:-1]))
         return fixup_result("\n".join(lines[:line_to_rm]))
+
+
+def extract_imports(module_node: ast.Module) -> dict[str, str]:
+    """Extract import statements from the module node.
+
+    Args:
+        module_node: the module node to extract imports from.
+
+    Returns:
+        a dictionary with imported libraries as keys and aliases as values.
+    """
+    imports: dict[str, str] = {}
+    for node in module_node.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports[alias.name] = alias.asname or alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module_name = node.module or ""
+            for alias in node.names:
+                full_name = f"{module_name}.{alias.name}" if module_name else alias.name
+                imports[full_name] = alias.asname or alias.name
+    return imports
+
+
+def extract_import_statements(module_node: ast.Module) -> list[str]:
+    """Extract import statements from the module node as source strings.
+
+    Args:
+        module_node: the module node to extract imports from.
+
+    Returns:
+        A list of import statements as valid Python source strings.
+    """
+    import_statements: list[str] = [
+        ast.unparse(node)
+        for node in module_node.body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+    ]
+    return import_statements

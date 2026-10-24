@@ -55,11 +55,8 @@ import pynguin.ga.computations as ff
 import pynguin.ga.generationalgorithmfactory as gaf
 import pynguin.ga.postprocess as pp
 import pynguin.ga.testsuitechromosome as tsc
+import pynguin.utils.pynguinml.ml_testing_resources as tr
 import pynguin.utils.statistics.stats as stat
-
-if config.configuration.pynguinml.ml_testing_enabled or TYPE_CHECKING:
-    import pynguin.utils.pynguinml.ml_testing_resources as tr
-
 from pynguin.analyses.constants import (
     ConstantProvider,
     DelegatingConstantProvider,
@@ -97,8 +94,7 @@ if TYPE_CHECKING:
     from pynguin.assertion.mutation_analysis.operators.base import MutationOperator
     from pynguin.ga.algorithms.generationalgorithm import GenerationAlgorithm
 
-if config.configuration.pynguinml.ml_testing_enabled or TYPE_CHECKING:
-    from pynguin.utils.pynguinml import np_rng
+from pynguin.utils.pynguinml import np_rng
 
 
 @enum.unique
@@ -767,7 +763,7 @@ def _run_llm() -> ReturnCode:
     user_prompt += "```\n"
     user_prompt += load_sut_code()
     user_prompt += "\n```\n"
-    response = model.chat(user_prompt)
+    response = model.chat(user_prompt)[0]
     if not response:
         return ReturnCode.NO_TESTS_GENERATED
 
@@ -854,7 +850,7 @@ def _minimize(generation_result, algorithm=None):
                 generation_result.accept(test_case_minimizer)
 
                 _LOGGER.info(
-                    "Removed %d statement(s) from test casesusing %s minimization",
+                    "Removed %d statement(s) from test cases using %s minimization",
                     iterative_minimizer.removed_statements,
                     minimization_strategy.value,
                 )
@@ -1148,8 +1144,8 @@ def _export_chromosome(
         module_ast,
         target_file,
         format_with_black=config.configuration.test_case_output.format_with_black,
-        module_name_with_coverage=config.configuration.module_name
-        if coverage_by_import_only
-        else None,
+        module_name_with_coverage=(
+            config.configuration.module_name if coverage_by_import_only else None
+        ),
     )
     _LOGGER.info("Written %i test cases to %s", chromosome.size(), target_file)

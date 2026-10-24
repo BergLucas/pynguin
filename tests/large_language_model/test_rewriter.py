@@ -6,6 +6,7 @@
 #
 
 import ast
+import textwrap
 
 import pytest
 
@@ -103,13 +104,82 @@ class TestAttrAccess:
     ],
 )
 def test_rewrite_tests(llm_output, expected_snippet):
-    result_dict = rewriter.rewrite_tests(llm_output)
+    result_imports, result_dict = rewriter.rewrite_tests(llm_output)
+    assert isinstance(result_imports, list)
     assert isinstance(result_dict, dict)
     assert any("test_" in fn_name for fn_name in result_dict)
 
     final_code = "\n".join(result_dict.values())
     for line in expected_snippet:
         assert line in final_code
+
+
+def test_rewrite_tests_preserves_imports():
+    source = textwrap.dedent("""
+        import pandas as pd
+        import pytest
+
+        @pytest.mark.xfail(strict=True)
+        def test_process_df_missing_col():
+            df = pd.DataFrame({"col2": [1, 2, 3]})
+            with pytest.raises(KeyError):
+                process_df(df)
+        """)
+
+    result_imports, result_tests = rewriter.rewrite_tests(source)
+
+    assert result_imports == ["import pandas as pd", "import pytest"]
+    assert list(result_tests) == ["test_process_df_missing_col"]
+
+    rewritten = "\n\n".join(["\n".join(result_imports), "\n\n".join(result_tests.values())])
+    assert "import pandas as pd" in rewritten
+    assert "import pytest" in rewritten
+    assert "@pytest.mark.xfail(strict=True)" not in rewritten
+    assert "@pytest.mark.parametrize" not in rewritten
+    assert "df = pd.DataFrame(" in rewritten
+    assert "with pytest.raises(KeyError):" in rewritten
+    assert "var_0 = process_df(df)" in rewritten
+
+
+@pytest.mark.parametrize(
+    "llm_output, expected_imports",
+    [
+        (
+            """import os
+import numpy as np
+from collections import defaultdict
+from math import sqrt as square_root
+""",
+            {
+                "os": "os",
+                "numpy": "np",
+                "collections.defaultdict": "defaultdict",
+                "math.sqrt": "square_root",
+            },
+        ),
+        (
+            """import pandas as pd
+from datetime import datetime
+""",
+            {
+                "pandas": "pd",
+                "datetime.datetime": "datetime",
+            },
+        ),
+        (
+            """from module import func1, func2 as f2
+""",
+            {
+                "module.func1": "func1",
+                "module.func2": "f2",
+            },
+        ),
+    ],
+)
+def test_extract_imports(llm_output, expected_imports):
+    module_node = ast.parse(llm_output)
+    imports = rewriter.extract_imports(module_node)
+    assert imports == expected_imports
 
 
 def test_stmt_rewriter_replace_with_varname():

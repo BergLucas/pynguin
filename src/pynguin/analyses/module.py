@@ -37,22 +37,9 @@ import astroid
 from astroid.nodes import Assign, AsyncFunctionDef, ClassDef, FunctionDef, Lambda, Module
 
 import pynguin.configuration as config
+import pynguin.utils.pynguinml.ml_testing_resources as tr  # Need to always import because config is not loaded  # noqa: E501
 import pynguin.utils.statistics.stats as stat
 import pynguin.utils.typetracing as tt
-from pynguin.analyses.type_inference import (
-    ANY_STR,
-    HintInference,
-    InferenceProvider,
-    LLMInference,
-    LLMInferenceWithSubtypes,
-    NoInference,
-    TypeEvalPyInference,
-)
-from pynguin.utils.llm import LLMProvider
-
-if config.configuration.pynguinml.ml_testing_enabled or typing.TYPE_CHECKING:
-    import pynguin.utils.pynguinml.ml_testing_resources as tr
-
 from pynguin.analyses.generator import GeneratorProvider, RandomGeneratorProvider
 from pynguin.analyses.modulecomplexity import mccabe_complexity
 from pynguin.analyses.syntaxtree import (
@@ -61,6 +48,15 @@ from pynguin.analyses.syntaxtree import (
     get_class_node_from_ast,
     get_function_description,
     get_function_node_from_ast,
+)
+from pynguin.analyses.type_inference import (
+    ANY_STR,
+    HintInference,
+    InferenceProvider,
+    LLMInference,
+    LLMInferenceWithSubtypes,
+    NoInference,
+    TypeEvalPyInference,
 )
 from pynguin.analyses.typesystem import (
     ANY,
@@ -91,13 +87,11 @@ from pynguin.utils.generic.genericaccessibleobject import (
     GenericFunction,
     GenericMethod,
 )
+from pynguin.utils.llm import LLMProvider
 from pynguin.utils.orderedset import OrderedSet
 from pynguin.utils.statistics.runtimevariable import RuntimeVariable
 from pynguin.utils.type_utils import COLLECTIONS, PRIMITIVES, get_class_that_defined_method
 from pynguin.utils.typeevalpy_json_schema import ParsedTypeEvalPyData, parse_json, provide_json
-
-if config.configuration.pynguinml.ml_testing_enabled or typing.TYPE_CHECKING:
-    import pynguin.utils.pynguinml.ml_testing_resources as tr
 
 if typing.TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -580,6 +574,11 @@ class TestCluster(abc.ABC):  # noqa: PLR0904
 
     @property
     @abc.abstractmethod
+    def callables(self) -> OrderedSet[GenericCallableAccessibleObject]:
+        """Provides all callables from SUT and dependencies."""
+
+    @property
+    @abc.abstractmethod
     def function_data_for_accessibles(
         self,
     ) -> dict[GenericAccessibleObject, CallableData]:
@@ -953,6 +952,10 @@ class ModuleTestCluster(TestCluster):  # noqa: PLR0904
         return self.__accessible_objects_under_test
 
     @property
+    def callables(self) -> OrderedSet[GenericCallableAccessibleObject]:  # noqa: D102
+        return self.__callables
+
+    @property
     def function_data_for_accessibles(  # noqa: D102
         self,
     ) -> dict[GenericAccessibleObject, CallableData]:
@@ -1221,6 +1224,10 @@ class FilteredModuleTestCluster(TestCluster):  # noqa: PLR0904
             # Should never happen, just in case everything is already covered?
             return self.__delegate.accessible_objects_under_test
         return OrderedSet(accessibles)
+
+    @property
+    def callables(self) -> OrderedSet[GenericCallableAccessibleObject]:  # noqa: D102
+        return self.__delegate.callables
 
     def num_accessible_objects_under_test(self) -> int:  # noqa: D102
         return self.__delegate.num_accessible_objects_under_test()
@@ -1788,11 +1795,19 @@ def __analyse_included_functions(
         if current in seen_functions:
             continue
         seen_functions.add(current)
+
+        try:
+            module_tree = parse_results[current.__module__].syntax_tree
+        except (
+            ModuleNotFoundError
+        ):  # pybind11 functions reference modules that are not found, we skip them
+            module_tree = None
+
         __analyse_function(
             func_name=current.__qualname__,
             func=current,
             type_inference_provider=type_inference_provider,
-            module_tree=parse_results[current.__module__].syntax_tree,
+            module_tree=module_tree,
             test_cluster=test_cluster,
             add_to_test=current.__module__ == root_module_name,
         )
